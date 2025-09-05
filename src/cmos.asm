@@ -42,6 +42,7 @@
 	EXTERN	AUTONO
 	EXTERN	USER
 	EXTERN	VERMSG
+	EXTERN  KEY_TAB_END
 ;
 ;
 ;OSSAVE - Save an area of memory to a file.
@@ -1208,7 +1209,8 @@ ESCDIS:	POP	HL
 ;   Inputs: A = character.
 ; Destroys: Nothing
 ;
-OSWRCH:	PUSH	AF
+OSWRCH:	
+	PUSH	AF
 	PUSH	DE
 	PUSH	HL
 	LD	E,A
@@ -1275,7 +1277,7 @@ INSERT:	LD	A,(FLAGS)
 ;           A=0.
 ; Destroys: A,B,C,D,E,H,L,F
 ;
-OSLINE:	LD	IX,200H
+OSLINE:	LD	IX, KEY_TAB_END
 	LD	A,(FLAGS)
 	BIT	3,A		;EDIT MODE?
 	JR	Z,OSLIN1
