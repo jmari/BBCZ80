@@ -16,7 +16,7 @@
 ;R.T.RUSSELL, 11-03-1984, 03-05-1989, 12-05-2024
 ;
 CPM	EQU	5
-COLD	EQU	200H
+
 ;
 	PUBLIC	CLRSCN
 	PUBLIC	PUTCSR
@@ -25,6 +25,9 @@ COLD	EQU	200H
 	PUBLIC	GETIME
 	PUBLIC	GETKEY
 	PUBLIC	BYE
+	PUBLIC  KEY_TAB_END
+;	
+	EXTERN COLD
 ;
 ;	ASEG
 	ORG	100H
@@ -51,6 +54,12 @@ BDOS:	PUSH	IX
 	POP	IX
 	RET
 ;
+
+
+CALSLT    EQU 	001CH
+EXPTBL    EQU 	0FCC1H
+
+
 ;INIT	- Perform hardware initialisation (if any).
 ;
 INIT:	LD	A,2
@@ -112,31 +121,19 @@ PTIME:	PUSH	BC
 ;
 ; Get OS elapsed-time clock
 ;  Outputs: DEHL = time (centiseconds)
-; Destroys: A,B,C,D,E,H,L,F
+; Destroys: A,D,E,H,L,F
 ;
-TICKS:	LD	C,248		;RunCPM-specific function call
-	CALL	BDOS
-	PUSH	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,HL
-	LD	BC,-5
-	LD	A,32
-DIV0:	ADD	HL,BC
-	JR	C,DIV1
-	SBC	HL,BC
-DIV1:	RL	E
-	RL	D
-	EX	(SP),HL
-	RL	L
-	RL	H
-	EX	(SP),HL
-	ADC	HL,HL
-	DEC	A
-	JR	NZ,DIV0
-	EX	DE,HL
-	POP	DE
-	RET
+
+TICKS: 					;MSX specific function call
+    JIFFY   EQU 0FC9EH    
+    LD  A, (JIFFY+0)    ; Byte menos significativo (Byte 0)
+    LD  L, A
+	LD  A, (JIFFY+1)    ; Byte 1
+	LD  H, A
+	XOR  E
+	XOR  D
+    RET
+
 ;
 ;INKEY	- Sample keyboard with specified wait.
 ;   	  Inputs: HL = Time to wait (centiseconds)
@@ -170,23 +167,46 @@ INKEY1:	POP	BC
 ;	  (Customise to suit your VDU)
 ; 	  Destroys: A,D,E,H,L,F
 ;
-CLS:	RET
+CLS: PUSH IX
+	PUSH IY
+    LD	IX,00C3H             ;address of BIOS routine
+	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
+	XOR  A
+	CALL   CALSLT              ;interslot call
+	POP IY
+	POP IX
+	RET
 ;
 ;PCSR	- Move cursor to specified position.
 ;   	  Inputs: DE = horizontal position (LHS=0)
 ;                 HL = vertical position (TOP=0)
 ; 	  Destroys: A,D,E,H,L,F
 ;
-PCSR:	RET
+
+
+PCSR: 
+	PUSH IX
+	PUSH IY
+    LD  H, E       ; Cargar en C la coordenada X (columna)
+    LD	IX,00C6H             ;address of BIOS routine
+	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
+	CALL   CALSLT              ;interslot call
+	POP IY
+	POP IX
+	RET
 ;
 ;GCSR	- Return cursor coordinates.
 ;   	  Outputs:  DE = X coordinate (POS)
 ;                   HL = Y coordinate (VPOS)
 ;  	  Destroys: A,D,E,H,L,F
 ;
-GCSR:	LD	DE,0
-	LD	HL,0
+GCSR:
+	LD DE, (0F3DCH)
+	LD HL, (0F3DDH)
+	XOR D
+	XOR H
 	RET
+
 ;
 ;COUT - Output a character to the console
 ;   Inputs: A = character
@@ -214,16 +234,28 @@ COUT:	PUSH	BC
 OFFLO:	DEFW	0		;TIME OFFSET LO
 OFFHI:	DEFW	0		;TIME OFFSET HI
 	DEFB	80		;WIDTH
-	DEFB	'G' & 1FH	;CURSOR UP
-	DEFB	'O' & 1FH	;CURSOR DOWN
-	DEFB	'F' & 1FH	;START OF LINE
-	DEFB	'N' & 1FH	;END OF LINE
-	DEFB	'X' & 1FH	;DELETE TO END OF LINE
+	DEFB	1EH	;CURSOR UP
+	DEFB	1FH	;CURSOR DOWN
+	DEFB	0BH	;START OF LINE
+	DEFB	0Eh	;END OF LINE
+	DEFB	05H	;DELETE TO END OF LINE
 	DEFB	08H		;BACKSPACE & DELETE
-	DEFB	'U' & 1FH	;DEL TO START OF LINE
-	DEFB	'J' & 1FH	;CURSOR LEFT
-	DEFB	'L' & 1FH	;CURSOR RIGHT
-	DEFB	'R' & 1FH	;DELETE CHARACTER
-	DEFB	'Q' & 1FH	;INS/OVR TOGGLE
+	DEFB	00H	;DEL TO START OF LINE
+	DEFB	1DH	;CURSOR LEFT
+	DEFB	1CH ;CURSOR RIGHT
+	DEFB	7FH	;DELETE CHARACTER
+	DEFB	12h	;INS/OVR TOGGLE
+
+;	DEFB	'G' & 1FH	;CURSOR UP
+;	DEFB	'O' & 1FH	;CURSOR DOWN
+;	DEFB	'F' & 1FH	;START OF LINE
+;	DEFB	'N' & 1FH	;END OF LINE
+;	DEFB	'X' & 1FH	;DELETE TO END OF LINE
+;	DEFB	08H		;BACKSPACE & DELETE
+;	DEFB	'U' & 1FH	;DEL TO START OF LINE
+;	DEFB	'J' & 1FH	;CURSOR LEFT
+;	DEFB	'L' & 1FH	;CURSOR RIGHT
+;	DEFB	'R' & 1FH	;DELETE CHARACTER
+;	DEFB	'Q' & 1FH	;INS/OVR TOGGLE
 ;
-FIN:	DEFS 	0
+KEY_TAB_END:	DEFS 	0
