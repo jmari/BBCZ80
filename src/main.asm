@@ -49,6 +49,7 @@
 	EXTERN	LOADN
 	EXTERN	SFIX
 ;
+	PUBLIC	COLD
 	PUBLIC	NXT
 	PUBLIC	NLIST
 	PUBLIC	START
@@ -871,7 +872,7 @@ LISTO:	INC	IY		;SKIP "O"
 ;LIST line,
 ;
 LIST:	CP	'O'
-	JR	Z,LISTO
+	JR	Z,LISTO		;SET LIST TO ON ?¿
 	LD	C,1
 	LD	DE,BUFFER
 	CALL	LEXAN2
@@ -1366,7 +1367,8 @@ LISTIT:	PUSH	HL
 	POP	BC
 	POP	HL
 	LD	A,(HL)
-	EXX
+	PUSH HL ; ANTES EXX
+	EXX       ;aqui hay un problema porque los reg' cambian de valor
 	LD	HL,TOKSUB
 	LD	BC,LENSUB
 	CPIR
@@ -1375,12 +1377,13 @@ LISTIT:	PUSH	HL
 	CALL	Z,INDSUB
 	LD	A,' '
 	BIT	0,(IX)
-	CALL	NZ,OUTCHR
+	CALL	NZ,OUTCHR 
 	LD	A,E
 	ADD	A,A
 	BIT	1,(IX)
-	CALL	NZ,SPACES
-	EXX
+	CALL	NZ,SPACES; y cambian aquí en la llamada al sistema 
+	EXX       ;aqui hay un problema porque los reg' cambian de valor pero sino repongo BC o DE indenta mal
+	POP HL ;ANTES EXX
 	LD	A,(HL)
 	LD	E,0
 	EXX
@@ -1402,7 +1405,8 @@ LIST8:	LD	A,(HL)
 LIST6:	CP	'"'
 	JR	NZ,LIST7
 	INC	E
-LIST7:	CALL	LOUT
+LIST7:	
+	CALL	LOUT   ; aqui escribe el token      
 	LD	A,E
 	AND	81H
 	JR	NZ,LIST8
