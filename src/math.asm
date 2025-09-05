@@ -1,4 +1,4 @@
-	TITLE	'(C) COPYRIGHT R.T.RUSSELL 1986-2025'
+;	TITLE	"(C) COPYRIGHT R.T.RUSSELL 1986-2025"
 ;
 ;Z80 FLOATING POINT PACKAGE
 ;(C) COPYRIGHT  R.T.RUSSELL  1986-2024
@@ -32,11 +32,11 @@ LOGRNG	EQU	22		;Log range
 ACLOST	EQU	23		;Accuracy lost
 EXPRNG	EQU	24		;Exp range
 ;
-	GLOBAL	FPP
-	EXTRN	STORE5
-	EXTRN	DLOAD5
+	PUBLIC	FPP
+	EXTERN	STORE5
+	EXTERN	DLOAD5
 ;
-;Call entry and despatch code:
+;Call entry & despatch code:
 ;
 FPP:	PUSH	IY		;Save IY
 	LD	IY,0
@@ -82,7 +82,7 @@ DISPAT:	PUSH	HL
 ;
 ;Despatch table:
 ;
-DTABLE:	DEFW	IAND		;0  AND (INTEGER)
+DTABLE:	DEFW	IAND		;0  & (INTEGER)
 	DEFW	IBDIV		;1  DIV
 	DEFW	IEOR		;2  EOR
 	DEFW	IMOD		;3  MOD
@@ -155,8 +155,8 @@ RTABLE:	DEFW	FAND		;AND (FLOATING-POINT)
 	DEFW	FPOW		;^
 	DEFW	FDIV		;/
 ;
-;ARITHMETIC AND LOGICAL OPERATORS:
-;All take two arguments, in HLH'L'C & DED'E'B.
+;ARITHMETIC & LOGICAL OPERATORS:
+;All take two arguments, in HLH"L'C & DED'E"B.
 ;Output in HLH'L'C
 ;All registers except IX, IY destroyed.
 ; (N.B. FPOW destroys IX).
@@ -295,13 +295,13 @@ FADD:	DEC	B
 	LD	A,D		;SIGN OF LARGER
 	SET	7,D		;IMPLIED 1
 	JP	M,FADD3		;SIGNS DIFFERENT
-	CALL	ADD		;HLH'L'=HLH'L'+DED'E'
+	CALL	ADD		;HLH"L'=HLH'L'+DED'E"
 	CALL	C,DIV2		;NORMALISE
 	SET	7,H
 	JR	FADD4
 ;
-FADD3:	CALL	SUB		;HLH'L'=HLH'L'-DED'E'
-	CALL	C,NEG		;NEGATE HLH'L'B'C'
+FADD3:	CALL	SUB		;HLH"L'=HLH'L'-DED'E"
+	CALL	C,NEG		;NEGATE HLH"L'B'C"
 	CALL	FLO48
 	CPL			;CHANGE RESULT SIGN
 FADD4:	EXX
@@ -496,7 +496,7 @@ IPOW3:	PUSH	BC
 	RL	E
 	RL	D
 	PUSH	DE
-	LD	A,'*' AND 0FH
+	LD	A,'*' & 0FH
 	PUSH	AF
 	CALL	COPY
 	CALL	OP		;SQUARE
@@ -544,7 +544,7 @@ FPOW1:	CALL	SWAP
 	CALL	FMUL
 	JP	EXP0
 ;
-;Integer and floating-point compare.
+;Integer & floating-point compare.
 ;Result is TRUE (-1) or FALSE (0).
 ;
 FLT:	CALL	FCP
@@ -1328,10 +1328,10 @@ STR27:	INC	B
 	JR	C,STR22
 ;
 ;At this point, the decimal character string is stored
-; on the stack. Trailing zeroes are suppressed and may
+; on the stack. Trailing zeroes are suppressed & may
 ; need to be replaced.
 ;B register holds decimal point position.
-;Now format number and store as ASCII string:
+;Now format number & store as ASCII string:
 ;
 STR3:	EX	DE,HL		;STRING POINTER
 	LD	C,-1		;FLAG "E"
@@ -1480,7 +1480,7 @@ CON3:	PUSH	AF
 ;             A = initial value
 ;    Outputs: A = new exponent
 ;             IX updated.
-;   Destroys: A,A',IX,F,F'
+;   Destroys: A,A",IX,F,F"
 ;
 GETEXP:	PUSH	BC		;SAVE REGISTERS
 	LD	B,A		;INITIAL VALUE
@@ -1522,7 +1522,7 @@ GETEX2:	EX	AF,AF'		;RESTORE SIGN
 ;   Outputs: HLH'L' = number (binary integer)
 ;            A = delimiter.
 ;            B, C & IX updated
-;  Destroys: A,B,C,D,E,H,L,B',C',D',E',H',L',IX,F
+;  Destroys: A,B,C,D,E,H,L,B",C',D',E',H',L",IX,F
 ;
 NUMBIX:	INC	IX
 NUMBER:	CALL	DIGITQ
@@ -1555,7 +1555,7 @@ NUMB1:	INC	C		;TRUNCATION COUNTER
 ;   Outputs: HLH'L'C = fixed number (unsigned)
 ;            fraction shifted into B'C'
 ;            A'F' positive if integer input
-;  Destroys: C,H,L,A',B',C',H',L',F,F'
+;  Destroys: C,H,L,A",B',C',H',L',F,F"
 ;
 FIX:	EX	AF,AF'
 	XOR	A
@@ -1570,10 +1570,10 @@ FIX1:	CALL	DIV2
 ;SFIX - Convert to integer if necessary.
 ;    Input: Variable-type number in HLH'L'C
 ;   Output: Integer in HLH'L', C=0
-; Destroys: A,C,H,L,A',B',C',H',L',F,F'
+; Destroys: A,C,H,L,A",B',C',H',L',F,F"
 ;
 ;NEGATE - Negate HLH'L'
-;    Destroys: H,L,H',L',F
+;    Destroys: H,L,H",L",F
 ;
 FIX2:	CALL	SWAP
 	CALL	SFIX
@@ -1603,9 +1603,9 @@ NEG0:	PUSH	DE
 	POP	DE
 	RET
 ;
-;NEG - Negate HLH'L'B'C'
+;NEG - Negate HLH"L'B'C"
 ;    Also complements A (used in FADD)
-;    Destroys: A,H,L,B',C',H',L',F
+;    Destroys: A,H,L,B",C',H',L",F
 ;
 NEG:	EXX
 	CPL
@@ -1621,13 +1621,13 @@ NEG:	EXX
 ;SCALE - Trig scaling.
 ;MOD48 - 48-bit floating-point "modulus" (remainder).
 ;   Inputs: HLH'L'C unsigned floating-point dividend
-;           DED'E'B'C'B unsigned 48-bit FP divisor
+;           DED"E'B'C"B unsigned 48-bit FP divisor
 ;  Outputs: HLH'L'C floating point remainder (H7=1)
 ;           E = quotient (bit 7 is sticky)
-; Destroys: A,B,C,D,E,H,L,B',C',D',E',H',L',IX,F
+; Destroys: A,B,C,D,E,H,L,B",C',D',E',H',L",IX,F
 ;FLO48 - Float unsigned number (48 bits)
-;    Input/output in HLH'L'B'C'C
-;   Destroys: C,H,L,B',C',H',L',F
+;    Input/output in HLH"L'B'C"C
+;   Destroys: C,H,L,B",C',H',L",F
 ;
 SCALE:	LD	A,150
 	CP	C
@@ -1706,7 +1706,7 @@ FLO48:	BIT	7,H
 ;
 ;Float unsigned number
 ;    Input/output in HLH'L'C
-;   Destroys: C,H,L,H',L',F
+;   Destroys: C,H,L,H",L",F
 ;
 FLOAT:	BIT	7,H
 	RET	NZ
@@ -1721,7 +1721,7 @@ FLOAT:	BIT	7,H
 ;SFLOAT - Convert to floating-point if necessary.
 ;    Input: Variable-type number in HLH'L'C
 ;    Output: Floating-point in HLH'L'C
-;    Destroys: A,C,H,L,H',L',F
+;    Destroys: A,C,H,L,H",L",F
 ;
 FLOATA:	EX	AF,AF'
 	ADD	A,(RTABLE-DTABLE)/2
@@ -1746,7 +1746,7 @@ SFLOAT:	DEC	C
 ;
 ;ROUND UP
 ;Return with carry set if 32-bit overflow
-;   Destroys: H,L,B',C',H',L',F
+;   Destroys: H,L,B",C',H',L",F
 ;
 ADD1:	EXX
 	LD	BC,1
@@ -1771,10 +1771,10 @@ ODD:	OR	A		;CLEAR CARRY
 	RET
 ;
 ;SWAP - Swap arguments.
-;    Exchanges DE,HL D'E',H'L' and B,C
-;    Destroys: A,B,C,D,E,H,L,D',E',H',L'
-;SWAP1 - Swap DEHL with D'E'H'L'
-;    Destroys: D,E,H,L,D',E',H',L'
+;    Exchanges DE,HL D"E',H'L" & B,C
+;    Destroys: A,B,C,D,E,H,L,D",E',H',L"
+;SWAP1 - Swap DEHL with D"E'H'L"
+;    Destroys: D,E,H,L,D",E',H',L"
 ;
 SWAP:	LD	A,C
 	LD	C,B
@@ -1785,7 +1785,7 @@ SWAP1:	EX	DE,HL
 	EXX
 	RET
 ;
-;DIV2 - destroys C,H,L,A',B',C',H',L',F,F'
+;DIV2 - destroys C,H,L,A",B',C',H',L',F,F"
 ;INCC - destroys C,F
 ;OFLOW
 ;
@@ -1841,13 +1841,13 @@ FCOMP1:	CALL	FLOAT2		;Float both
 	CALL	FCP
 	JR	FCOMP0
 ;
-;Integer and floating point compare.
-;Sets carry & zero flags according to HLH'L'C-DED'E'B
+;Integer & floating point compare.
+;Sets carry & zero flags according to HLH"L'C-DED'E"B
 ;Result pre-set to FALSE
 ;ICP1, FCP1 destroy A,F
 ;
 ;ZERO - Return zero.
-; Destroys: A,C,H,L,H',L'
+; Destroys: A,C,H,L,H",L"
 ;
 ICP:	CALL	ICP1
 ZERO:	LD	A,0
@@ -1895,7 +1895,7 @@ ICP1:	LD	A,H
 ;
 ;ADD - Integer add.
 ;Carry, sign & zero flags valid on exit
-;    Destroys: H,L,H',L',F
+;    Destroys: H,L,H",L",F
 ;
 X10B:	DEC	B
 	INC	C
@@ -1911,7 +1911,7 @@ ADD:	EXX
 ;
 ;SUB - Integer subtract.
 ;Carry, sign & zero flags valid on exit
-;    Destroys: H,L,H',L',F
+;    Destroys: H,L,H",L",F
 ;
 SUB:	EXX
 	OR	A
@@ -1922,16 +1922,16 @@ SUB:	EXX
 ;
 ;X10 - unsigned integer * 10
 ;   Inputs: HLH'L' initial value
-;  Outputs: DED'E' = initial HLH'L'
+;  Outputs: DED"E' = initial HLH'L"
 ;           Carry bit set if overflow
 ;           If carry not set HLH'L'=result
-; Destroys: D,E,H,L,D',E',H',L',F
+; Destroys: D,E,H,L,D",E',H',L",F
 ;X2 - Multiply HLH'L' by 2 as 32-bit integer.
 ;    Carry set if MSB=1 before shift.
 ;    Sign set if MSB=1 after shift.
-;    Destroys: H,L,H',L',F
+;    Destroys: H,L,H",L",F
 ;
-X10:	CALL	COPY0		;DED'E'=HLH'L'
+X10:	CALL	COPY0		;DED"E'=HLH'L"
 	CALL	X2
 	RET	C		;TOO BIG
 	CALL	X2
@@ -1946,7 +1946,7 @@ X2:	EXX
 ;
 ;D2 - Divide HLH'L' by 2 as 32-bit integer.
 ;    Carry set if LSB=1 before shift.
-;    Destroys: H,L,H',L',F
+;    Destroys: H,L,H",L",F
 ;
 D2C:	INC	C
 D2:	SRL	H
@@ -1957,8 +1957,8 @@ D2:	SRL	H
 	EXX
 	RET
 ;
-;COPY - COPY HLH'L'C INTO DED'E'B
-;  Destroys: B,C,D,E,H,L,D',E',H',L'
+;COPY - COPY HLH"L'C INTO DED'E"B
+;  Destroys: B,C,D,E,H,L,D",E',H',L"
 ;
 COPY:	LD	B,C
 COPY0:	LD	D,H
@@ -1984,7 +1984,7 @@ PUSH5:	POP	IX		;RETURN ADDRESS
 	JP	(IX)		;"RETURN"
 ;
 ;POP5 - POP DED'E'B OFF STACK.
-;  Destroys: A,B,D,E,D',E',SP,IX
+;  Destroys: A,B,D,E,D",E",SP,IX
 ;
 POP5:	POP	IX		;RETURN ADDRESS
 	EXX
@@ -2014,7 +2014,7 @@ RATIO:	CALL	PUSH5		;SAVE X
 	JP	FDIV
 ;
 ;POLY - Evaluate a polynomial.
-;    Inputs: X in HLH'L'C and also stored at (SP+2)
+;    Inputs: X in HLH'L'C & also stored at (SP+2)
 ;            Polynomial coefficients follow call.
 ;   Outputs: Result in HLH'L'C
 ;  Destroys: Everything except IY,SP,I
@@ -2044,7 +2044,7 @@ POLY1:	CALL	FMUL
 ;            A=binary exponent to be exceeded (A>=128)
 ;   Outputs: DED'E'B = result
 ;            A = actual power of ten returned
-;  Destroys: A,B,D,E,A',D',E',F,F'
+;  Destroys: A,B,D,E,A",D',E',F,F"
 ;
 POWR10:	INC	A
 	EX	AF,AF'
@@ -2085,10 +2085,10 @@ POWR14:	CALL	SWAP
 	RET
 ;
 ;DIVA, DIVB - DIVISION PRIMITIVE.
-;    Function: D'E'DE = H'L'HLD'E'DE / B'C'BC
+;    Function: D"E'DE = H'L'HLD'E'DE / B'C"BC
 ;              Remainder in H'L'HL
 ;    Inputs: A = loop counter (normally -32)
-;    Destroys: A,D,E,H,L,D',E',H',L',F
+;    Destroys: A,D,E,H,L,D",E',H',L",F
 ;
 DIVA:	OR	A		;CLEAR CARRY
 DIV0:	SBC	HL,BC		;DIVIDEND-DIVISOR
@@ -2123,10 +2123,10 @@ DIVB:	ADC	HL,HL		;DIVIDEND*2
 	JP	DIVC
 ;
 ;MULA, MULB - MULTIPLICATION PRIMITIVE.
-;    Function: H'L'HLD'E'DE = B'C'BC * D'E'DE
+;    Function: H"L'HLD'E'DE = B'C'BC * D'E"DE
 ;    Inputs: A = loop counter (usually -32)
 ;            H'L'HL = 0
-;    Destroys: D,E,H,L,D',E',H',L',A,F
+;    Destroys: D,E,H,L,D",E',H',L",A,F
 ;
 MULA:	OR	A		;CLEAR CARRY
 MUL0:	EXX
@@ -2151,10 +2151,10 @@ MULB:	EXX
 	JP	MUL0
 ;
 ;SQRA, SQRB - SQUARE ROOT PRIMITIVES
-;    Function: B'C'BC = SQR (D'E'DE)
+;    Function: B"C'BC = SQR (D'E"DE)
 ;    Inputs: A = loop counter (normally -31)
-;            B'C'BCH'L'HL initialised to 0
-;  Destroys: A,B,C,D,E,H,L,B',C',D',E',H',L',F
+;            B"C'BCH'L"HL initialised to 0
+;  Destroys: A,B,C,D,E,H,L,B",C',D',E',H',L",F
 ;
 SQR1:	SBC	HL,BC
 	EXX
@@ -2252,4 +2252,4 @@ ABS2:	EX	AF,AF'
 	LD	HL,0
 	RET
 ;
-	END
+

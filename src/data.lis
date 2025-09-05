@@ -1,0 +1,158 @@
+data.asm:
+     1                          ;	TITLE	BBC BASIC (C) R.T.RUSSELL 1981-2024
+     2                          ;
+     3                          ;RAM MODULE FOR BBC BASIC INTERPRETER
+     4                          ;FOR USE WITH VERSION 5.0 OF BBC BASIC
+     5                          ;(C) COPYRIGHT R.T.RUSSELL 1981-2024
+     6                          ;
+     7                          	PUBLIC	ACCS
+     8                          	PUBLIC	BUFFER
+     9                          	PUBLIC	ONERSP
+    10                          	PUBLIC	LIBASE
+    11                          	PUBLIC	PAGE
+    12                          	PUBLIC	LOMEM
+    13                          	PUBLIC	FREE
+    14                          	PUBLIC	HIMEM
+    15                          	PUBLIC	RANDOM
+    16                          	PUBLIC	COUNT
+    17                          	PUBLIC	WIDTH
+    18                          	PUBLIC	ERL
+    19                          	PUBLIC	ERR
+    20                          	PUBLIC	ERRTRP
+    21                          	PUBLIC	ERRTXT
+    22                          	PUBLIC	TRACEN
+    23                          	PUBLIC	AUTONO
+    24                          	PUBLIC	INCREM
+    25                          	PUBLIC	LISTON
+    26                          	PUBLIC	DATPTR
+    27                          	PUBLIC	FNPTR
+    28                          	PUBLIC	PROPTR
+    29                          	PUBLIC	STAVAR
+    30                          	PUBLIC	OC
+    31                          	PUBLIC	PC
+    32                          	PUBLIC	DYNVAR
+    33                          	PUBLIC	CURLIN
+    34                          	PUBLIC	USER
+    35                          ;
+    36                          ;n.b. ACCS, BUFFER & STAVAR must be on page boundaries.
+    37                          ;
+    38  0000  0000000000000000  ACCS:	DEFS	256		;STRING ACCUMULATOR
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+    39  0100  0000000000000000  BUFFER:	DEFS	256		;STRING INPUT BUFFER
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+    40  0200  0000000000000000  STAVAR:	DEFS	27*4		;STATIC VARIABLES
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              00000000          
+    41                          OC	EQU	STAVAR+15*4	;CODE ORIGIN (O%)
+    42                          PC	EQU	STAVAR+16*4	;PROGRAM COUNTER (P%)
+    43  026c  0000000000000000  DYNVAR:	DEFS	54*2		;DYN. VARIABLE POINTERS
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              0000000000000000  
+              00000000          
+    44  02d8  0000              FNPTR:	DEFS	2		;DYN. FUNCTION POINTER
+    45  02da  0000              PROPTR:	DEFS	2		;DYN. PROCEDURE POINTER
+    46                          ;
+    47  02dc  0000              PAGE:	DEFS	2		;START OF USER PROGRAM
+    48  02de  0000              LOMEM:	DEFS	2		;START OF DYN. STORAGE
+    49  02e0  0000              FREE:	DEFS	2		;FIRST FREE-SPACE BYTE
+    50  02e2  0000              HIMEM:	DEFS	2		;FIRST BYTE ABOVE STACK
+    51  02e4  0000              LIBASE:	DEFS	2		;START OF FIRST LIBRARY
+    52                          ;
+    53  02e6  0000              TRACEN:	DEFS	2		;TRACE FLAG AND NUMBER
+    54  02e8  0000              AUTONO:	DEFS	2		;AUTO FLAG AND NUMBER
+    55  02ea  0000              ERRTRP:	DEFS	2		;ON ERROR STMT POINTER \
+    56  02ec  0000              ONERSP:	DEFS	2		;ON ERROR LOCAL STKPTR /
+    57  02ee  0000              ERRTXT:	DEFS	2		;ERROR MESSAGE POINTER
+    58  02f0  0000              DATPTR:	DEFS	2		;DATA POINTER
+    59  02f2  0000              ERL:	DEFS	2		;LINE NO OF LAST ERROR
+    60  02f4  0000              CURLIN:	DEFS	2		;POINTER TO CURRENT LINE
+    61  02f6  0000000000        RANDOM:	DEFS	5		;RANDOM NUMBER
+    62  02fb  00                COUNT:	DEFS	1		;PRINT POSITION
+    63  02fc  00                WIDTH:	DEFS	1		;PRINT WIDTH
+    64  02fd  00                ERR:	DEFS	1		;ERROR NUMBER
+    65  02fe  00                LISTON:	DEFS	1		;LISTO & OPT FLAG
+    66  02ff  00                INCREM:	DEFS	1		;AUTO INCREMENT
+    67                          ;
+    68                          USER:	DEFS 	0
+    69                          
