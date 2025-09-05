@@ -6,13 +6,18 @@
 *.o
 *.ko
 *.obj
+*.o 
 build/
 
 # Linker output
 *.ilk
 *.map
 *.exp
-
+*.err 
+*.lis 
+*.map 
+*.sym 
+*.def
 # Precompiled Headers
 *.gch
 *.pch
