@@ -121,11 +121,10 @@ PTIME:	PUSH	BC
 ;
 ; Get OS elapsed-time clock
 ;  Outputs: DEHL = time (centiseconds)
-; Destroys: A,D,E,H,L,F
+; Destroys: D,E,H,L,F
 ;
-
+JIFFY   EQU 0FC9EH   
 TICKS: 					;MSX specific function call
-    JIFFY   EQU 0FC9EH    
     LD  A, (JIFFY+0)    ; Byte menos significativo (Byte 0)
     LD  L, A
 	LD  A, (JIFFY+1)    ; Byte 1
@@ -223,10 +222,10 @@ COUT:	PUSH	BC
 	POP	BC
 	RET
 ;
-;	DEFS 0$ > 1F0h
-;    ; Código a ensamblar si la dirección actual es mayor que 1F0h
+;DEFS 0$ > 1F0h
+    ; Código a ensamblar si la dirección actual es mayor que 1F0h
 ;	ERROR	"INSUFFICIENT SPACE"
-;	ENDIF
+;ENDIF
 
 ;
 ;	ORG	1F0H
