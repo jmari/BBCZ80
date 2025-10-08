@@ -29,6 +29,11 @@ CPM	EQU	5
 ;	
 	EXTERN COLD
 ;
+;BDOS	- Save the IX & IY registers & before performing a
+;	  CP/M function call.
+;
+	EXTERN BDOS
+;
 ;	ASEG
 	ORG	100H
 ;
@@ -43,17 +48,8 @@ PUTIME:	JP	PTIME		;SET ELAPSED TIME
 GETIME:	JP	GTIME		;READ ELAPSED TIME
 GETKEY:	JP	INKEY		;READ KEY (TIME LIMIT)
 BYE:	JP	REBOOT		;RETURN TO CP/M
-;
-;BDOS	- Save the IX & IY registers & before performing a
-;	  CP/M function call.
-;
-BDOS:	PUSH	IX
-	PUSH	IY
-	CALL	CPM
-	POP	IY
-	POP	IX
-	RET
-;
+
+
 
 
 CALSLT    EQU 	001CH

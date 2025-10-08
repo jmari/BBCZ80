@@ -97,43 +97,131 @@ TFILL	EQU	03H
 	GLOBAL	TINTFN
 	GLOBAL	MODEFN
 	GLOBAL	WIDFN
+
+	GLOBAL  BDOS
 ;
+
+
+
 SCRAP:	DEFS	31
 	DEFB	0
-TEMP_DEST: DEFS 2
-    DEFB    0
 ;
 
 ;BDOS	- Save the IX & IY registers & before performing a
-;	  CP/M function call.
+;	      msx-dos or CP/M function call in C.
 ;
+;vdu variables
+VDU_MODE:  DEFB 0
+VDU_ARGV: DEFS	32
+VDU_ARGC: DEFB 0
+VDU_ARGC_LIST:   DEFB    0 ;VDU 0 Does nothing.
+			DEFB    0 ;VDU 1 provided the printer has been enabled (with VDU 2), tthe next character (byte) is sent to the printer and not to the screen.
+			DEFB    0 ;VDU 2 enables the printer. It causes all subsequent output to be sent to both the screen and the printer. 
+			DEFB    0 ;VDU 3 disables the printer. It cancels the effect of VDU 2 
+			DEFB    0 ;VDU 4 causes text to be written at the text cursor position in the normal way.
+			DEFB    0 ;VDU 5 causes text to be written at the graphics cursor position.
+			DEFB    0 ;VDU 6 enables output to the VDU screen.
+			DEFB    0 ;VDU 7 causes a short 'beep' from the speaker.
+			DEFB    0 ;VDU 8 moves the text cursor one character to the left
+			DEFB    0 ;VDU 9 moves the text cursor one character to the right. 
+			DEFB    0 ;VDU 10 moves the text cursor down one line. 
+			DEFB    0 ;VDU 11 moves the text cursor up one line. 
+			DEFB    0 ;VDU 12 is identical to CLS
+			DEFB    0 ;VDU 13 moves the text cursor to the left edge of the text window
+			DEFB    0 ;VDU 14 enables auto-paging mode. 
+			DEFB    0 ;VDU 15 disables auto-paging mode. 
+			DEFB    0 ;VDU 16 is identical to CLG. 
+			DEFB    1 ;VDU 17 is identical to COLOUR.N  text foreground (n<128) or background (n>=128) colours to the value n.
+			DEFB    2 ;VDU 18 is identical to GCOL. k,c
+			DEFB    5 ;VDU 19 The Palette, 1,p,r,g,b
+			DEFB    0 ;VDU 20 Restore Default Colour Setting, COLOUR 7,COLOUR 128,GCOL 0,7,GCOL 0,128 and default palette
+			DEFB    0 ;VDU 21 disables the VDU until a VDU 6 is received. 
+			DEFB    0 ;VDU 22 is identical to MODE, except that MODE zeros the value of COUNT whereas VDU 22 does not.
+			DEFB    1 ;VDU 23, Depends on next byte (mode)
+			DEFB    4*2 ;VDU 24 In the graphics modes, VDU 24 defines a graphics window. 
+			DEFB    3*2 ;VDU 25 is identical to the PLOT command
+			DEFB    0 ;VDU 26 resets the text and graphics windows to their default positions 
+			DEFB    0 ;VDU 27 sends the next byte to the screen without interpreting it as a control character.
+			DEFB    4 ;VDU 28 defines a text window. 
+			DEFB    2*2 ;VDU 29 moves the graphics origin to the coordinates specified by the following two words (
+			DEFB    0 ;VDU 30 homes the text cursor to the top left corner of the text window. In VDU 5 mode, VDU 30 homes the graphics cursor to the top left corner of the graphics window. 
+			DEFB    2 ;VDU 31 is identical to PRINT TAB(x,y). It positions the text cursor according to the following two bytes. 
+			DEFB    0 ;VDU 127 Delete the character to the left of the cursor and backspace the cursor and all the characters on the line to the right of the cursor.
+
 BDOS:	PUSH	IX
 	PUSH	IY
+	LD A,C    ;Is Write a char to the console char is E
+	CP 2
+	JR Z, VDU_CMD
+BDOS_CALL:
 	CALL	CPM
 	POP	IY
 	POP	IX
 	RET
+VDU_CMD:
+	LD A,(VDU_ARGC)	;how many arguments are we waiting?
+	CP 0			; if not 0 read this byte is an argument 
+	JR NZ,VDU_READ_PARAMS_MODE
+	LD A,D          ; else if the byte is ge to 31 it is not a VDU cmd
+	CP 31
+	JR NC, BDOS_CALL
+	LD HL,VDU_MODE	; else it is a VDU command
+	LD (HL),D       ; stores current command in VDU_MODE
+	LD HL,VDU_ARGV  ;
+	LD (HL),0		;resets arguments
+	LD HL,VDU_ARGC_LIST
+	LD E,A			;updates the expected arguments por this VDU command
+	LD D,0 
+	ADD HL,DE       ;VDU_ARGC+VDU_CMD contains the number of arguments
+	LD A,(HL)
+	LD (VDU_ARGC), A
+	POP	IY
+	POP	IX
+	RET
+VDU_READ_PARAMS_MODE:
+	LD HL,VDU_ARGV	;Loadsargv vector address
+	LD A,D          ;loads the byte parameter in A
+	LD DE,(VDU_ARGC) ;reads the number of arguments
+	LD D,0          
+	ADD HL,DE		;get the last position of the stack of parameters
+	LD (HL),A		;put the byte at the top of the stack
+	DEC E			;one less argument left
+	LD A,E
+	LD (VDU_ARGC),A ;updates the number of arguments 
+	POP	IY
+	POP	IX
+	RET
+
+
+
 ;
+;VDU 0 does nothing, reset the command arguments counter
+VDU0:
+	ret
+
 BDOS_GET_DATE    EQU 2AH 	;get date
 BDOS_SET_DATE    EQU 2BH 	;set date
 BDOS_GET_TIME    EQU 2CH 	;get time
 BDOS_SET_TIME    EQU 2DH 	;set time
-;
+
+;----READY----
 ;GETIMS	- Read real-time clock as string.
 ;  	  Outputs:  TIME$ in string accumulator
 ;                   E = string length (25)
 ; 	  Destroys: A,B,C,D,E,H,L,F
 ;
-; USES Function STR - convert numeric value to ASCII string.
+;USES Function STR - convert numeric value to ASCII string.
 ;   Inputs: HLH'L'C = integer or floating-point number
 ;           DE = address at which to store string
 ;           IX = address of @% format control
 ;    LD	    A,37
-;    CALL    FPP		  ;STR          ; HLH'L' contiene la multiplicacion
+;    CALL    FPP		  ;STR          ; HLH'L' 
+;THIS IS A VERY LONG IMPLEMENTATION BECAUSE MSX BIOS HAS NOTHING 
+;LIKE STRING REPRESENTATION ALMOST AS A BDOS SUBRUTINE (mybe basic rom has something closer)
 DAY_OF_WEEK:	DEFM	"Sun.Mon.Tue.Wed.Thu.Fri.Sat." ; four chars per day
-DAYFORMAT:	DEFM	"@00"
+DAYFORMAT:	    DEFM	"@00" 
 MONTHS:	DEFM	"Jan Feb Mar Apr May Jun Jul Ago Sep Oct Nov Dec" ; four chars per month
-YEARFORMAT:	DEFM	"@00"
+YEARFORMAT:	    DEFM	"@00"
 
 GETIMS:	
 	LD	HL,SCRAP
@@ -359,17 +447,10 @@ PUTIMS:	LD	A,E		;Length
 	LD	(HL),A
 	LD	A,15
 	JP	OSWORD
-;
-;
-;CLRSCN	- Clear screen.
-; 	  Destroys: A,D,E,H,L,F
-;
-CLRSCN:	LD	A,0CH
-	JP	OSWRCH
 
 
 ;POINT - var=POINT(x,y)
-;
+; read the color of the pixel xy
 POINT:	CALL	EXPRI
 	EXX
 	PUSH	HL
@@ -398,7 +479,7 @@ RETEXX:	EXX
 	RET
 ;
 ;ADVAL - var=ADVAL(n)
-;
+;lectura de canales analogicos (joysticks p.e.) >0, botones de joystick =0 estado buffers <0
 ADVAL:	CALL	ITEMI
 	EXX
 	LD	A,128
@@ -407,16 +488,19 @@ ADVAL:	CALL	ITEMI
 	JR	RETEXX
 ;
 ;MODEFN - var=MODE
-;
-MODEFN:	LD	A,135
-	CALL	OSBYTE
-	LD	L,H
+;----READY----
+MODEFN:	    
+	
+	; get the screen mode
+    LD  A, (SCRMOD)      ; A = display mode
+	LD  L,A
+
 RETU8:	XOR	A
 	LD	H,A
 	JR	RETEXX
 ;
 ;WIDFN - var=WIDTH
-;
+;----READY----
 WIDFN:	LD	A,(WIDTH)
 	LD	L,A
 	JR	RETU8
@@ -482,8 +566,8 @@ MODE:	CALL	EXPRI
 	LD	(COUNT),A
 	EXX
 	LD	H,L
-	LD	L,22
-	CALL	WRCH2
+	LD	L,22        ;22 is the VDU command for changing screen mode
+	CALL	WRCH2   ;seems writing the vdu command (22) and then the mode, changes the graphic mode
 	JR	XEQGO1
 ;
 ;CLG
@@ -864,7 +948,7 @@ WRCH4:	LD	A,E
 	CALL	OSWRCH
 WRCH3:	LD	A,D
 	CALL	OSWRCH
-WRCH2:	LD	A,L
+WRCH2:	LD	A,L   
 	CALL	OSWRCH
 	LD	A,H
 	JP	OSWRCH
