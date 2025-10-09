@@ -99,6 +99,7 @@ TFILL	EQU	03H
 	GLOBAL	WIDFN
 
 	GLOBAL  BDOS
+	GLOBAL BDOS0
 ;
 
 
@@ -147,6 +148,22 @@ VDU_ARGC_LIST:   DEFB    0 ;VDU 0 Does nothing.
 			DEFB    0 ;VDU 30 homes the text cursor to the top left corner of the text window. In VDU 5 mode, VDU 30 homes the graphics cursor to the top left corner of the graphics window. 
 			DEFB    2 ;VDU 31 is identical to PRINT TAB(x,y). It positions the text cursor according to the following two bytes. 
 			DEFB    0 ;VDU 127 Delete the character to the left of the cursor and backspace the cursor and all the characters on the line to the right of the cursor.
+
+BDOS0:	PUSH	BC
+	PUSH	DE
+	PUSH	HL
+	PUSH	IX
+	PUSH	IY
+	LD	C,A
+	CALL	CPM
+	INC	H
+	DEC	H
+	POP	IY
+	POP	IX
+	POP	HL
+	POP	DE
+	POP	BC
+	RET
 
 BDOS:	
 	PUSH	BC

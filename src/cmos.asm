@@ -450,21 +450,7 @@ CPMERR:	LD	A,255
 	DEFM	"CP/M Error"
 	DEFB	0
 ;
-BDOS0:	PUSH	BC
-	PUSH	DE
-	PUSH	HL
-	PUSH	IX
-	PUSH	IY
-	LD	C,A
-	CALL	BDOS
-	INC	H
-	DEC	H
-	POP	IY
-	POP	IX
-	POP	HL
-	POP	DE
-	POP	BC
-	RET
+extern BDOS0
 ;
 ;WRITE - Write a record to a disk file.
 ;   Inputs: DE addresses FCB.
@@ -1069,7 +1055,7 @@ PTEXT:	LD	A,(HL)
 ;
 OSINIT:	LD	C,45		;*
 	LD	E,254		;*
-	CALL	BDOS		;*
+	CALL	05		;* OJOOOOOOO----------ESTA LLAMADA ESTA AQUI PARA Q ------------------------------------
 	XOR	A
 	LD	B,INILEN
 	LD	HL,TABLE
@@ -1484,7 +1470,6 @@ CR	EQU	0DH
 ESC	EQU	1BH
 DEL	EQU	7FH
 ;
-BDOS	EQU	5
 ;
 FCB	EQU	5CH
 DSKBUF	EQU	80H
