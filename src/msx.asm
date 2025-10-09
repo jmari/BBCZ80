@@ -148,15 +148,24 @@ VDU_ARGC_LIST:   DEFB    0 ;VDU 0 Does nothing.
 			DEFB    2 ;VDU 31 is identical to PRINT TAB(x,y). It positions the text cursor according to the following two bytes. 
 			DEFB    0 ;VDU 127 Delete the character to the left of the cursor and backspace the cursor and all the characters on the line to the right of the cursor.
 
-BDOS:	PUSH	IX
+BDOS:	
+	PUSH	BC
+	PUSH	DE
+	PUSH	HL
+	PUSH	IX
 	PUSH	IY
 	LD A,C    ;Is Write a char to the console char is E
 	CP 2
 	JR Z, VDU_CMD
 BDOS_CALL:
 	CALL	CPM
+	INC	H
+	DEC	H
 	POP	IY
 	POP	IX
+	POP	HL
+	POP	DE
+	POP	BC
 	RET
 VDU_CMD:
 	LD A,(VDU_ARGC)	;how many arguments are we waiting?
@@ -177,6 +186,9 @@ VDU_CMD:
 	LD (VDU_ARGC), A
 	POP	IY
 	POP	IX
+	POP	HL
+	POP	DE
+	POP	BC
 	RET
 VDU_READ_PARAMS_MODE:
 	LD HL,VDU_ARGV	;Loadsargv vector address
@@ -190,6 +202,9 @@ VDU_READ_PARAMS_MODE:
 	LD (VDU_ARGC),A ;updates the number of arguments 
 	POP	IY
 	POP	IX
+	POP	HL
+	POP	DE
+	POP	BC
 	RET
 
 
