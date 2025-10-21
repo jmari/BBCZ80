@@ -97,9 +97,8 @@ TFILL	EQU	03H
 	GLOBAL	TINTFN
 	GLOBAL	MODEFN
 	GLOBAL	WIDFN
-
 	GLOBAL  BDOS
-	GLOBAL BDOS0
+	GLOBAL  BDOS0
 ;
 
 
@@ -149,26 +148,22 @@ VDU_ARGC_LIST:   DEFB    0 ;VDU 0 Does nothing.
 			DEFB    2 ;VDU 31 is identical to PRINT TAB(x,y). It positions the text cursor according to the following two bytes. 
 			DEFB    0 ;VDU 127 Delete the character to the left of the cursor and backspace the cursor and all the characters on the line to the right of the cursor.
 
+
 BDOS0:	PUSH	BC
 	PUSH	DE
 	PUSH	HL
-	PUSH	IX
-	PUSH	IY
+
 	LD	C,A
-	CALL	CPM
+	CALL	BDOS
 	INC	H
 	DEC	H
-	POP	IY
-	POP	IX
+	
 	POP	HL
 	POP	DE
 	POP	BC
 	RET
 
 BDOS:	
-	PUSH	BC
-	PUSH	DE
-	PUSH	HL
 	PUSH	IX
 	PUSH	IY
 	LD A,C    ;Is Write a char to the console char is E
@@ -176,13 +171,8 @@ BDOS:
 	JR Z, VDU_CMD
 BDOS_CALL:
 	CALL	CPM
-	INC	H
-	DEC	H
 	POP	IY
 	POP	IX
-	POP	HL
-	POP	DE
-	POP	BC
 	RET
 VDU_CMD:
 	LD A,(VDU_ARGC)	;how many arguments are we waiting?
@@ -196,16 +186,13 @@ VDU_CMD:
 	LD HL,VDU_ARGV  ;
 	LD (HL),0		;resets arguments
 	LD HL,VDU_ARGC_LIST
-	LD E,A			;updates the expected arguments por this VDU command
+	LD E,A			;updates the expected arguments for this VDU command
 	LD D,0 
 	ADD HL,DE       ;VDU_ARGC+VDU_CMD contains the number of arguments
 	LD A,(HL)
 	LD (VDU_ARGC), A
 	POP	IY
 	POP	IX
-	POP	HL
-	POP	DE
-	POP	BC
 	RET
 VDU_READ_PARAMS_MODE:
 	LD HL,VDU_ARGV	;Loadsargv vector address
@@ -219,9 +206,6 @@ VDU_READ_PARAMS_MODE:
 	LD (VDU_ARGC),A ;updates the number of arguments 
 	POP	IY
 	POP	IX
-	POP	HL
-	POP	DE
-	POP	BC
 	RET
 
 

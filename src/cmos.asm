@@ -43,6 +43,7 @@
 	EXTERN	USER
 	EXTERN	VERMSG
 	EXTERN  KEY_TAB_END
+	EXTERN BDOS0
 ;
 ;
 ;OSSAVE - Save an area of memory to a file.
@@ -450,7 +451,7 @@ CPMERR:	LD	A,255
 	DEFM	"CP/M Error"
 	DEFB	0
 ;
-extern BDOS0
+
 ;
 ;WRITE - Write a record to a disk file.
 ;   Inputs: DE addresses FCB.
