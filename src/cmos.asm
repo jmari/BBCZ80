@@ -1054,9 +1054,10 @@ PTEXT:	LD	A,(HL)
 ;            Z-flag reset indicates AUTO-RUN.
 ;  Destroys: A,B,C,D,E,H,L,F
 ;
+CPM	EQU	5
 OSINIT:	LD	C,45		;*
 	LD	E,254		;*
-	CALL	05		;* OJOOOOOOO----------ESTA LLAMADA ESTA AQUI PARA Q ------------------------------------
+	CALL	CPM		
 	XOR	A
 	LD	B,INILEN
 	LD	HL,TABLE

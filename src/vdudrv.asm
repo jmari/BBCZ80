@@ -9,6 +9,25 @@ OSWORD	EQU	0FFF1H
 OSBYTE	EQU	0FFF4H
 ;
 CPM	EQU	5
+OS_CONSOLE_OUTPUT EQU 02H
+
+
+BEL	EQU	07H
+CUP	EQU	1EH	;CURSOR UP
+CDOWN	EQU	1FH	;CURSOR DOWN
+STLN	EQU	0BH	;START OF LINE
+EDLN	EQU	0Eh	;END OF LINE
+DENL	EQU	05H	;DELETE TO END OF LINE
+BACK	EQU	08H		;BACKSPACE & DELETE
+CR 	EQU 0DH
+LF 	EQU 0AH
+DBACK	EQU	00H	;DEL TO START OF LINE
+CLF	EQU	1DH	;CURSOR LEFT
+CRG	EQU	1CH ;CURSOR RIGHT
+DEL	EQU	7FH	;DELETE CHARACTER
+INS	EQU	12h	;INS/OVR TOGGLE
+
+
 ESC	EQU	1BH
 TBY	EQU	0FH
 TTO	EQU	0B8H
@@ -60,7 +79,7 @@ TFILL	EQU	03H
     SCRMOD      EQU     0FCAFh      ; Current Screen mode
 ;
 	;GLOBAL	OSCALL      implemented in cmos.asm
-	;GLOBAL	CLRSCN      implemented in dist.asm
+	EXTERN	CLRSCN      ;implemented in dist.asm
 	;GLOBAL	PUTCSR      implemented in dist.asm
 	;GLOBAL	GETCSR      implemented in dist.asm
 	;GLOBAL	PUTIME      implemented in dist.asm
@@ -147,17 +166,50 @@ VDU_ARGC_LIST:   DEFB    0 ;VDU 0 Does nothing.
 			DEFB    0 ;VDU 30 homes the text cursor to the top left corner of the text window. In VDU 5 mode, VDU 30 homes the graphics cursor to the top left corner of the graphics window. 
 			DEFB    2 ;VDU 31 is identical to PRINT TAB(x,y). It positions the text cursor according to the following two bytes. 
 			DEFB    0 ;VDU 127 Delete the character to the left of the cursor and backspace the cursor and all the characters on the line to the right of the cursor.
+VDU_SUBR_LIST:
+	DEFW VDU0
+	DEFW VDU1
+	DEFW VDU2
+	DEFW VDU3
+	DEFW VDU4
+	DEFW VDU5
+	DEFW VDU6
+	DEFW VDU7
+	DEFW VDU8
+	DEFW VDU9
+	DEFW VDU10
+	DEFW VDU11
+	DEFW VDU12
+	DEFW VDU13
+	DEFW VDU14
+	DEFW VDU15
+	DEFW VDU16
+	DEFW VDU17
+	DEFW VDU18
+	DEFW VDU19
+	DEFW VDU20
+	DEFW VDU21
+	DEFW VDU22
+	DEFW VDU23
+	DEFW VDU24
+	DEFW VDU25
+	DEFW VDU26
+	DEFW VDU27
+	DEFW VDU28
+	DEFW VDU29
+	DEFW VDU30
+	DEFW VDU31
+	;DEFW VDU127
 
 
+;...
 BDOS0:	PUSH	BC
 	PUSH	DE
 	PUSH	HL
-
 	LD	C,A
 	CALL	BDOS
 	INC	H
 	DEC	H
-	
 	POP	HL
 	POP	DE
 	POP	BC
@@ -167,7 +219,7 @@ BDOS:
 	PUSH	IX
 	PUSH	IY
 	LD A,C    ;Is Write a char to the console char is E
-	CP 2
+	CP 6
 	JR Z, VDU_CMD
 BDOS_CALL:
 	CALL	CPM
@@ -175,14 +227,16 @@ BDOS_CALL:
 	POP	IX
 	RET
 VDU_CMD:
-	LD A,(VDU_ARGC)	;how many arguments are we waiting?
+	LD A,(VDU_ARGC)	; how many arguments are we waiting?
 	CP 0			; if not 0 read this byte is an argument 
 	JR NZ,VDU_READ_PARAMS_MODE
-	LD A,D          ; else if the byte is ge to 31 it is not a VDU cmd
-	CP 31
+	LD A,E          
+	CP 0FFH         ; else if the byte is FF it is requesting for a key input
+	JR Z, BDOS_CALL
+	CP 31           ; else if the byte is ge to 31 it is not a VDU cmd
 	JR NC, BDOS_CALL
 	LD HL,VDU_MODE	; else it is a VDU command
-	LD (HL),D       ; stores current command in VDU_MODE
+	LD (HL),E       ; stores current command in VDU_MODE
 	LD HL,VDU_ARGV  ;
 	LD (HL),0		;resets arguments
 	LD HL,VDU_ARGC_LIST
@@ -191,11 +245,30 @@ VDU_CMD:
 	ADD HL,DE       ;VDU_ARGC+VDU_CMD contains the number of arguments
 	LD A,(HL)
 	LD (VDU_ARGC), A
+	LD A,(VDU_ARGC)	; how many arguments are we waiting?
+	CP 0			; if not 0 read this byte is an argument 
+	JR NZ, END_VDU   ;Start CALLING THE VDP COMMAND
+EXEC_VDU_CMD:
+	LD A,(VDU_MODE)   ;command number
+	LD HL,VDU_MODE
+	LD (HL),0         ;reset command
+	ADD A, A          ; Multiply index by 2. 
+	LD DE, VDU_SUBR_LIST
+    ADD DE, A
+    LD A,(DE)
+	LD L,A
+	INC DE
+	LD A,(DE)
+	LD H,A
+	LD BC,END_VDU
+	PUSH BC         ;STORES PC AFTER JP IN THE PILE 
+	JP (HL)         ;CALLS THE VDP COMMAND
+END_VDU:
 	POP	IY
 	POP	IX
 	RET
 VDU_READ_PARAMS_MODE:
-	LD HL,VDU_ARGV	;Loadsargv vector address
+	LD HL,VDU_ARGV	;Loads argv vector address
 	LD A,D          ;loads the byte parameter in A
 	LD DE,(VDU_ARGC) ;reads the number of arguments
 	LD D,0          
@@ -204,16 +277,84 @@ VDU_READ_PARAMS_MODE:
 	DEC E			;one less argument left
 	LD A,E
 	LD (VDU_ARGC),A ;updates the number of arguments 
-	POP	IY
-	POP	IX
-	RET
-
-
+	CP 0            ;command has no more arguments so we have to execute 
+	JR NZ, END_VDU
+	JR EXEC_VDU_CMD
 
 ;
 ;VDU 0 does nothing, reset the command arguments counter
-VDU0:
-	ret
+VDU0:RET
+VDU1:RET
+VDU2:RET
+VDU3:RET
+VDU4:RET
+VDU5:RET
+VDU6:RET
+VDU7:
+	;VDU 8 command is the Cursor left character so we only need to call BDOS end return
+   	LD 	E, BEL ;LF
+	LD  C, OS_CONSOLE_OUTPUT
+	LD  B, 0 
+	CALL  CPM       
+	RET
+VDU8:
+	;VDU 8 command is the Cursor left character so we only need to call BDOS end return
+   	LD 	E, CLF ;LF
+	LD  C, OS_CONSOLE_OUTPUT
+	LD  B, 0 
+	CALL  CPM       
+	RET
+VDU9:
+	;VDU 8 command is the Cursor left character so we only need to call BDOS end return
+   	LD 	E, CRG;LF
+	LD  C, OS_CONSOLE_OUTPUT
+	LD  B, 0 
+	CALL  CPM       
+	RET
+VDU10:
+	;VDU 10 command is the LF character so we only need to call BDOS end return
+   	LD 	E, LF ;LF
+	LD  C, OS_CONSOLE_OUTPUT
+	LD  B, 0 
+	CALL  CPM       
+	RET
+VDU11:
+	;VDU 10 command is the LF character so we only need to call BDOS end return
+   	LD 	E, CUP ;LF
+	LD  C, OS_CONSOLE_OUTPUT
+	LD  B, 0 
+	CALL  CPM       
+	RET
+VDU12:
+	CALL CLRSCN
+	RET
+VDU13:
+	;VDU 13, D command is the CR character so we only need to call BDOS end return
+   	LD 	E, CR ;CR
+	LD  C, OS_CONSOLE_OUTPUT
+	LD  B, 0 
+	CALL  CPM       
+	RET
+VDU14:RET
+VDU15:RET
+VDU16:RET
+VDU17:RET
+VDU18:RET
+VDU19:RET
+VDU20:RET
+VDU21:RET
+VDU22:RET
+VDU23:RET
+VDU24:RET
+;VDU25:RET
+VDU26:RET
+VDU27:RET
+VDU28:RET
+VDU29:RET
+VDU30:RET
+VDU31:RET
+VDU127:RET
+
 
 BDOS_GET_DATE    EQU 2AH 	;get date
 BDOS_SET_DATE    EQU 2BH 	;set date
