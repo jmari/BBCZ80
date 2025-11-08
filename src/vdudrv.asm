@@ -9,7 +9,12 @@ OSWORD	EQU	0FFF1H
 OSBYTE	EQU	0FFF4H
 ;
 CPM	EQU	5
-OS_CONSOLE_OUTPUT EQU 02H
+
+BDOS_GET_DATE    EQU 2AH 	;get date
+BDOS_SET_DATE    EQU 2BH 	;set date
+BDOS_GET_TIME    EQU 2CH 	;get time
+BDOS_SET_TIME    EQU 2DH 	;set time
+BDOS_CONSOLE_OUTPUT EQU 02H
 
 
 BEL	EQU	07H
@@ -33,7 +38,6 @@ TBY	EQU	0FH
 TTO	EQU	0B8H
 TFILL	EQU	03H
 ;
-    EXTERN  OSWRCH
 
 	EXTERN	ITEMI
 	EXTERN	EXPRI
@@ -52,14 +56,9 @@ TFILL	EQU	03H
 	EXTERN	WIDTH
 	EXTERN	SCRAP
 ;
-
-    EXTERN    GOX	    ;GRAPHIC VIEWPORT ORIGIN  X in px
-    EXTERN    GOY	    ;GRAPHIC VIEWPORT ORIGIN  Y in px
-    EXTERN    GXW	    ;GRAPHIC VIEWPORT X WIDE in px
-    EXTERN    GYH	    ;GRAPHIC VIEWPORT Y HEIGHT in px
     EXTERN    FPP       ;for Math subrutines operation
 
-; ROM BIOS SUBRUTINES
+; ---------MSX ROM BIOS SUBRUTINES
     EXPTBL      EQU 	0FCC1H      ;ROM BIOS SLOT
     CHGMOD      EQU     005Fh       ;change screen mode A
                                     ;Input    : A  - SCREEN mode 
@@ -70,7 +69,7 @@ TFILL	EQU	03H
                                     ;Input    : A  - ASCII code of character to display
     CHGET       EQU     009Fh       ;Function : One character input (waiting)
                                     ;Output   : A  - ASCII code of the input character 
-; ROM BIOS VARS
+; ---------MSX ROM BIOS VARS
     GXPOSH      EQU     0FCB3h 	 	;2 	X-position of graphic cursor
     GYPOSH      EQU     0FCB5h 	 	;2 	Y-position of graphic cursor
     GRPACXH     EQU     0FCB7h 	 	;2 	X Graphics Accumulator
@@ -78,46 +77,51 @@ TFILL	EQU	03H
     GRPACYL     EQU     0FCBAh      ;L  Y Graphics Accumulator  
     SCRMOD      EQU     0FCAFh      ; Current Screen mode
 ;
-	;GLOBAL	OSCALL      implemented in cmos.asm
+	;PUBLIC	OSCALL      implemented in cmos.asm
 	EXTERN	CLRSCN      ;implemented in dist.asm
-	;GLOBAL	PUTCSR      implemented in dist.asm
-	;GLOBAL	GETCSR      implemented in dist.asm
-	;GLOBAL	PUTIME      implemented in dist.asm
+	;PUBLIC	PUTCSR      implemented in dist.asm
+	;PUBLIC	GETCSR      implemented in dist.asm
+	;PUBLIC	PUTIME      implemented in dist.asm
 	EXTERN	GETIME      ;implemented in dist.asm
-	;GLOBAL	OSKEY       implemented in dist.asm
+	;PUBLIC	OSKEY       implemented in dist.asm
 ;
-	GLOBAL	CLG
-	GLOBAL	MOVE
-	GLOBAL	DRAW
-	GLOBAL	PLOT
-	GLOBAL	MODE
-	GLOBAL	COLOUR
-	GLOBAL	GCOL
-	GLOBAL	ADVAL
-	GLOBAL	SOUND
-	GLOBAL	ENVEL
-	GLOBAL	POINT
+	PUBLIC	CLG
+	PUBLIC	MOVE
+	PUBLIC	DRAW
+	PUBLIC	PLOT
+	PUBLIC	MODE
+	PUBLIC	COLOUR
+	PUBLIC	GCOL
+	PUBLIC	ADVAL
+	PUBLIC	SOUND
+	PUBLIC	ENVEL
+	PUBLIC	POINT
 ;
-	GLOBAL	CIRCLE
-	GLOBAL	ELLIPS
-	GLOBAL	FILL
-	GLOBAL	MOUSE
-	GLOBAL	ORIGIN
-	GLOBAL	RECTAN
-	GLOBAL	LINE
-	GLOBAL	TINT
-	GLOBAL	WAIT
-	GLOBAL	SYS
-	GLOBAL	CSRON
-	GLOBAL	CSROFF
+	PUBLIC	CIRCLE
+	PUBLIC	ELLIPS
+	PUBLIC	FILL
+	PUBLIC	MOUSE
+	PUBLIC	ORIGIN
+	PUBLIC	RECTAN
+	PUBLIC	LINE
+	PUBLIC	TINT
+	PUBLIC	WAIT
+	PUBLIC	SYS
+	PUBLIC	CSRON
+	PUBLIC	CSROFF
 ;
-	GLOBAL	PUTIMS
-	GLOBAL	GETIMS
-	GLOBAL	TINTFN
-	GLOBAL	MODEFN
-	GLOBAL	WIDFN
-	GLOBAL  BDOS
-	GLOBAL  BDOS0
+	PUBLIC	PUTIMS
+	PUBLIC	GETIMS
+	PUBLIC	TINTFN
+	PUBLIC	MODEFN
+	PUBLIC	WIDFN
+	PUBLIC  BDOS
+	PUBLIC  BDOS0
+	PUBLIC  OSWRCH_WITHOUT_READ
+	PUBLIC  GOX	
+	PUBLIC  GOY	
+	PUBLIC  GXW	
+	PUBLIC  GYH	
 ;
 
 
@@ -129,44 +133,45 @@ SCRAP:	DEFS	31
 ;BDOS	- Save the IX & IY registers & before performing a
 ;	      msx-dos or CP/M function call in C.
 ;
-;vdu variables
-VDU_MODE:  DEFB 0
-VDU_ARGV: DEFS	32
-VDU_ARGC: DEFB 0
-VDU_ARGC_LIST:   DEFB    0 ;VDU 0 Does nothing.
-			DEFB    0 ;VDU 1 provided the printer has been enabled (with VDU 2), tthe next character (byte) is sent to the printer and not to the screen.
-			DEFB    0 ;VDU 2 enables the printer. It causes all subsequent output to be sent to both the screen and the printer. 
-			DEFB    0 ;VDU 3 disables the printer. It cancels the effect of VDU 2 
-			DEFB    0 ;VDU 4 causes text to be written at the text cursor position in the normal way.
-			DEFB    0 ;VDU 5 causes text to be written at the graphics cursor position.
-			DEFB    0 ;VDU 6 enables output to the VDU screen.
-			DEFB    0 ;VDU 7 causes a short 'beep' from the speaker.
-			DEFB    0 ;VDU 8 moves the text cursor one character to the left
-			DEFB    0 ;VDU 9 moves the text cursor one character to the right. 
-			DEFB    0 ;VDU 10 moves the text cursor down one line. 
-			DEFB    0 ;VDU 11 moves the text cursor up one line. 
-			DEFB    0 ;VDU 12 is identical to CLS
-			DEFB    0 ;VDU 13 moves the text cursor to the left edge of the text window
-			DEFB    0 ;VDU 14 enables auto-paging mode. 
-			DEFB    0 ;VDU 15 disables auto-paging mode. 
-			DEFB    0 ;VDU 16 is identical to CLG. 
-			DEFB    1 ;VDU 17 is identical to COLOUR.N  text foreground (n<128) or background (n>=128) colours to the value n.
-			DEFB    2 ;VDU 18 is identical to GCOL. k,c
-			DEFB    5 ;VDU 19 The Palette, 1,p,r,g,b
-			DEFB    0 ;VDU 20 Restore Default Colour Setting, COLOUR 7,COLOUR 128,GCOL 0,7,GCOL 0,128 and default palette
-			DEFB    0 ;VDU 21 disables the VDU until a VDU 6 is received. 
-			DEFB    0 ;VDU 22 is identical to MODE, except that MODE zeros the value of COUNT whereas VDU 22 does not.
-			DEFB    1 ;VDU 23, Depends on next byte (mode)
-			DEFB    4*2 ;VDU 24 In the graphics modes, VDU 24 defines a graphics window. 
-			DEFB    3*2 ;VDU 25 is identical to the PLOT command
-			DEFB    0 ;VDU 26 resets the text and graphics windows to their default positions 
-			DEFB    0 ;VDU 27 sends the next byte to the screen without interpreting it as a control character.
-			DEFB    4 ;VDU 28 defines a text window. 
-			DEFB    2*2 ;VDU 29 moves the graphics origin to the coordinates specified by the following two words (
-			DEFB    0 ;VDU 30 homes the text cursor to the top left corner of the text window. In VDU 5 mode, VDU 30 homes the graphics cursor to the top left corner of the graphics window. 
-			DEFB    2 ;VDU 31 is identical to PRINT TAB(x,y). It positions the text cursor according to the following two bytes. 
-			DEFB    0 ;VDU 127 Delete the character to the left of the cursor and backspace the cursor and all the characters on the line to the right of the cursor.
-VDU_SUBR_LIST:
+;------------ VDU variables
+VDU_MODE:  DEFB 0   ; VDU command in execution, 0 if no command is in execution
+VDU_ARGV: DEFS	32  ; VDU Command Arguments vector 
+VDU_ARGC: DEFB 0    ; VDU Command arguments counter
+VDU_ARGC_LIST:      ; VDU number of arguments table
+	DEFB    0 ;VDU 0 Does nothing.
+	DEFB    0 ;VDU 1 provided the printer has been enabled (with VDU 2), tthe next character (byte) is sent to the printer and not to the screen.
+	DEFB    0 ;VDU 2 enables the printer. It causes all subsequent output to be sent to both the screen and the printer. 
+	DEFB    0 ;VDU 3 disables the printer. It cancels the effect of VDU 2 
+	DEFB    0 ;VDU 4 causes text to be written at the text cursor position in the normal way.
+	DEFB    0 ;VDU 5 causes text to be written at the graphics cursor position.
+	DEFB    0 ;VDU 6 enables output to the VDU screen.
+	DEFB    0 ;VDU 7 causes a short 'beep' from the speaker.
+	DEFB    0 ;VDU 8 moves the text cursor one character to the left
+	DEFB    0 ;VDU 9 moves the text cursor one character to the right. 
+	DEFB    0 ;VDU 10 moves the text cursor down one line. 
+	DEFB    0 ;VDU 11 moves the text cursor up one line. 
+	DEFB    0 ;VDU 12 is identical to CLS
+	DEFB    0 ;VDU 13 moves the text cursor to the left edge of the text window
+	DEFB    0 ;VDU 14 enables auto-paging mode. 
+	DEFB    0 ;VDU 15 disables auto-paging mode. 
+	DEFB    0 ;VDU 16 is identical to CLG. 
+	DEFB    1 ;VDU 17 is identical to COLOUR.N  text foreground (n<128) or background (n>=128) colours to the value n.
+	DEFB    2 ;VDU 18 is identical to GCOL. k,c
+	DEFB    5 ;VDU 19 The Palette, 1,p,r,g,b
+	DEFB    0 ;VDU 20 Restore Default Colour Setting, COLOUR 7,COLOUR 128,GCOL 0,7,GCOL 0,128 and default palette
+	DEFB    0 ;VDU 21 disables the VDU until a VDU 6 is received. 
+	DEFB    1 ;VDU 22 is identical to MODE, except that MODE zeros the value of COUNT whereas VDU 22 does not.
+	DEFB    1 ;VDU 23, Depends on next byte (mode)
+	DEFB    4*2 ;VDU 24 In the graphics modes, VDU 24 defines a graphics window. 
+	DEFB    3*2 ;VDU 25 is identical to the PLOT command
+	DEFB    0 ;VDU 26 resets the text and graphics windows to their default positions 
+	DEFB    0 ;VDU 27 sends the next byte to the screen without interpreting it as a control character.
+	DEFB    4 ;VDU 28 defines a text window. 
+	DEFB    2*2 ;VDU 29 moves the graphics origin to the coordinates specified by the following two words (
+	DEFB    0 ;VDU 30 homes the text cursor to the top left corner of the text window. In VDU 5 mode, VDU 30 homes the graphics cursor to the top left corner of the graphics window. 
+	DEFB    2 ;VDU 31 is identical to PRINT TAB(x,y). It positions the text cursor according to the following two bytes. 
+	DEFB    0 ;VDU 127 Delete the character to the left of the cursor and backspace the cursor and all the characters on the line to the right of the cursor.
+VDU_SUBR_LIST:		; VDU jump table
 	DEFW VDU0
 	DEFW VDU1
 	DEFW VDU2
@@ -201,6 +206,11 @@ VDU_SUBR_LIST:
 	DEFW VDU31
 	;DEFW VDU127
 
+;----------Viewport variables----------
+	GOX:	DEFW 0000H	
+	GOY:	DEFW 0000H
+	GXW: 	DEFW 0000H
+	GYH:	DEFW 0000H
 
 ;...
 BDOS0:	PUSH	BC
@@ -220,19 +230,23 @@ BDOS:
 	PUSH	IY
 	LD A,C    ;Is Write a char to the console char is E
 	CP 6
-	JR Z, VDU_CMD
+	JR Z, VDU_CMD ;VDU WRITE OR READ
+	CP 2
+	JR Z, VDU_CMD_W ;VDU WRITE
 BDOS_CALL:
 	CALL	CPM
 	POP	IY
 	POP	IX
 	RET
 VDU_CMD:
+	LD A,E          
+	CP 0FFH         ; if the byte is FF it is requesting for a key input
+	JR Z, BDOS_CALL
+VDU_CMD_W:
 	LD A,(VDU_ARGC)	; how many arguments are we waiting?
 	CP 0			; if not 0 read this byte is an argument 
 	JR NZ,VDU_READ_PARAMS_MODE
-	LD A,E          
-	CP 0FFH         ; else if the byte is FF it is requesting for a key input
-	JR Z, BDOS_CALL
+	LD A,E  
 	CP 31           ; else if the byte is ge to 31 it is not a VDU cmd
 	JR NC, BDOS_CALL
 	LD HL,VDU_MODE	; else it is a VDU command
@@ -255,10 +269,10 @@ EXEC_VDU_CMD:
 	ADD A, A          ; Multiply index by 2. 
 	LD DE, VDU_SUBR_LIST
     ADD DE, A
-    LD A,(DE)
-	LD L,A
+    LD A,(DE)   ;low byte of vdu cmd address
+	LD L,A 
 	INC DE
-	LD A,(DE)
+	LD A,(DE)   ;high byte if vdu address
 	LD H,A
 	LD BC,END_VDU
 	PUSH BC         ;STORES PC AFTER JP IN THE PILE 
@@ -268,18 +282,17 @@ END_VDU:
 	POP	IX
 	RET
 VDU_READ_PARAMS_MODE:
+	LD A,(VDU_ARGC) 
+	DEC A ;one less argument left
 	LD HL,VDU_ARGV	;Loads argv vector address
-	LD A,D          ;loads the byte parameter in A
-	LD DE,(VDU_ARGC) ;reads the number of arguments
-	LD D,0          
-	ADD HL,DE		;get the last position of the stack of parameters
-	LD (HL),A		;put the byte at the top of the stack
-	DEC E			;one less argument left
-	LD A,E
+	;reads the number of arguments         
+	ADD HL, A		;get the last position of the stack of parameters
+	LD (HL),E		;put the byte at the top of the parameter stack
 	LD (VDU_ARGC),A ;updates the number of arguments 
 	CP 0            ;command has no more arguments so we have to execute 
 	JR NZ, END_VDU
 	JR EXEC_VDU_CMD
+
 
 ;
 ;VDU 0 does nothing, reset the command arguments counter
@@ -293,35 +306,35 @@ VDU6:RET
 VDU7:
 	;VDU 8 command is the Cursor left character so we only need to call BDOS end return
    	LD 	E, BEL ;LF
-	LD  C, OS_CONSOLE_OUTPUT
+	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
 	CALL  CPM       
 	RET
 VDU8:
 	;VDU 8 command is the Cursor left character so we only need to call BDOS end return
    	LD 	E, CLF ;LF
-	LD  C, OS_CONSOLE_OUTPUT
+	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
 	CALL  CPM       
 	RET
 VDU9:
 	;VDU 8 command is the Cursor left character so we only need to call BDOS end return
    	LD 	E, CRG;LF
-	LD  C, OS_CONSOLE_OUTPUT
+	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
 	CALL  CPM       
 	RET
 VDU10:
 	;VDU 10 command is the LF character so we only need to call BDOS end return
    	LD 	E, LF ;LF
-	LD  C, OS_CONSOLE_OUTPUT
+	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
 	CALL  CPM       
 	RET
 VDU11:
 	;VDU 10 command is the LF character so we only need to call BDOS end return
    	LD 	E, CUP ;LF
-	LD  C, OS_CONSOLE_OUTPUT
+	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
 	CALL  CPM       
 	RET
@@ -331,7 +344,7 @@ VDU12:
 VDU13:
 	;VDU 13, D command is the CR character so we only need to call BDOS end return
    	LD 	E, CR ;CR
-	LD  C, OS_CONSOLE_OUTPUT
+	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
 	CALL  CPM       
 	RET
@@ -343,23 +356,88 @@ VDU18:RET
 VDU19:RET
 VDU20:RET
 VDU21:RET
-VDU22:RET
+VDU22:
+		LD A,(VDU_ARGV)
+		;Reset ORIGIN
+		LD     HL,0
+		LD     (GOX),HL
+		LD     (GOY),HL
+		;SCALE VIEWPORT WIDTH AND HEIGHT DEPENDING ON SCREEN MODE
+		CP     2;
+		JR     Z, SET_VIEWPORT_LR
+		CP     6;
+		JR     Z, SET_VIEWPORT_HR
+		CP     7;
+		JR     Z, SET_VIEWPORT_HR
+	SET_VIEWPORT_MR:
+		LD     HL,256
+		LD     (GXW), HL
+		LD     HL,212
+		LD     (GYH), HL
+		JR CALL_CHMOD
+	SET_VIEWPORT_LR:
+		LD     HL,256
+		LD     (GXW), HL
+		LD     HL,192
+		LD     (GYH), HL
+		JR CALL_CHMOD
+	SET_VIEWPORT_HR:
+		LD     HL,512
+		LD     (GXW), HL
+		LD     HL,212
+		LD     (GYH), HL
+	CALL_CHMOD:
+		LD     IY,(EXPTBL-1)       ;BIOS slot in iy
+		LD     IX, CHGMOD    
+		CALL   CALSLT
+		RET
+
 VDU23:RET
 VDU24:RET
 ;VDU25:RET
 VDU26:RET
 VDU27:RET
 VDU28:RET
-VDU29:RET
+VDU29:
+	;LOADS DE WITH X POS AND HL WITH Y POS
+	LD A,(VDU_ARGV)
+	LD E,A
+	LD A,(VDU_ARGV+1)
+	LD D,A                 ;DE HAS X COORD
+	LD A,(VDU_ARGV+2)
+	LD L,A
+	LD A,(VDU_ARGV+3)
+	LD H,A                 ;DE HAS X COORD
+	;SCALE
+    CALL    SCALE_GRAPHIC_POS
+	;LOADS SCALED COORD TO GOX AND GOY
+	LD A,E
+	LD (GOX),A 		;LOW BYTE GRAPHIC ORIGIN X
+	LD A,D
+	LD (GOX+1),A 	;HIGH BYTE GRAPHIC ORIGIN X
+	LD A,L
+	LD (GOY),A		;LOW BYTE GRAPHIC ORIGIN Y
+	LD A,H
+	LD (GOY+1),A	;HIGH BYTE GRAPHIC ORIGIN X
+	RET
 VDU30:RET
 VDU31:RET
 VDU127:RET
 
 
-BDOS_GET_DATE    EQU 2AH 	;get date
-BDOS_SET_DATE    EQU 2BH 	;set date
-BDOS_GET_TIME    EQU 2CH 	;get time
-BDOS_SET_TIME    EQU 2DH 	;set time
+
+OSWRCH_WITHOUT_READ:
+;------We need this becuse OSWRCH uses 06h cpm call 
+;------06h subrutine cannot send FF to the standard output
+OSWRCH:	
+	PUSH AF
+	PUSH DE
+	LD  E, A
+	LD 	A ,02H
+	CALL BDOS0	
+	POP DE
+	POP AF
+	RET
 
 ;----READY----
 ;GETIMS	- Read real-time clock as string.
@@ -605,6 +683,132 @@ PUTIMS:	LD	A,E		;Length
 	LD	A,15
 	JP	OSWORD
 
+;-----------------------------SCALING UTILITIES-------------------------------------
+; SCALE_POS convert row/Column to pixel position
+; Inputs: H = Fila (0-23), L = Columna (0-79)
+; Outputs:  DE = Coordenadas de píxel (H = X, L = Y)
+;          Los registros AF, DE se preservan
+SCALE_TEXT_POS:
+    PUSH AF
+    PUSH BC
+
+    ; get the screen mode
+    LD A, (SCRMOD)      ; A = display mode
+
+    ; calculates X (Columna * ancho_carácter)
+    CP 2
+    JR C, IS_TXT_MODE       ; Si A < 1 (Modos 0), es modo txt..ojo
+    CP 6
+    JR C, IS_40_COLUMNS     ; Si A < 6 (Modos 4 y 5), es de 40/32 columnas
+    CP 8
+    JR Z, IS_40_COLUMNS     ; Si A == 8, es de 32 columnas
+    
+    ; Lógica para 80 columnas (caracteres de 6 píxeles de ancho)
+    LD A, L
+    SLA A           ; A = Columna * 2
+    ADD A, L        ; A = Columna * 3
+    SLA A           ; A = Columna * 6
+    LD D, A         ; D = Coordenada X
+    JR Y_CALC
+
+IS_40_COLUMNS:
+    ; Lógica para 40 columnas (caracteres de 8 píxeles de ancho)
+    LD A, L
+    SLA A           ; A = Columna * 2
+    SLA A           ; A = Columna * 4
+    SLA A           ; A = Columna * 8
+    LD D, A         ; D = Coordenada X
+
+Y_CALC:
+    ; Calcular Y (Fila * 8), siempre 8 píxeles de alto
+    LD A, H
+    SLA A           ; A = Fila * 2
+    SLA A           ; A = Fila * 4
+    SLA A           ; A = Fila * 8
+    LD E, A         ; E = Coordenada Y
+
+    POP BC
+    POP AF
+    RET
+
+IS_TXT_MODE:
+    ;HL has yx
+    LD A, H     ; Guarda el contenido de H en A
+    LD H, L     ; Mueve el contenido de L a H
+    LD L, A     ; Mueve el contenido de A (que era H) a L
+    PUSH HL
+    LD	IX,00C6H             ;address of BIOS routine
+	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
+	CALL   001Ch      ; CALSLT
+    POP DE
+    POP BC
+    POP AF
+    RET
+
+; SCALE_GRAPHIC_POS:cALCULATES PIXEL COORDS
+;   	  Inputs: DE = horizontal position (LEFT=0..1279)
+;                 HL = vertical position (bottom=0..1023)
+; 	  Destroys: A,D,E,H,L,F
+;
+SCALE_GRAPHIC_POS:
+    PUSH AF                         ;STACK AF
+    PUSH BC                         ;STACK AF,BC
+    PUSH HL                         ;STACK AF,BC,HL
+
+    ;ARITHMETIC & LOGICAL OPERATORS:
+    ;All take two arguments, in HLH"L'C & DED'E"B.
+    ;Output in HLH'L'C
+    ; Subrutina para escalar un valor rango 1280 al ancho del viewport.
+    ;
+
+    LD      HL, (GXW)     ; Carga el primer entero en el registro HL
+    EXX                   ; Cambia a los registros alternos HL' tiene el ancho del viewport     
+                          ; DE' contiene la porsicion x
+    LD      HL, 0         ; Pone a cero HL (bits 31 al 16 del nº entero de 32 bits)
+    LD      DE, 0         ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
+    LD      BC,0          ; exponente tiene que ser 0 en ambos numeros	
+    LD	    A,10
+    CALL    FPP		  ;MULTIPLY          ; HLH'L' contiene la multiplicacion
+
+DIVIDE_BY_1280:
+    EXX     
+    LD      DE, 1280
+    EXX
+    LD      DE, 0         ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
+                          ; Divisor está en DED'É'
+    LD      BC,0          ; exponente tiene que ser 0 en ambos numeros
+    LD	    A,1
+    CALL    FPP		  ;IBDIV         ; after the mul and div the number is 16 bits
+    EXX
+    LD      DE,HL         ; carga H'L' en DE temporalmente
+   
+
+SCALE_1024_TO_VIEPORT_HEIGHT:
+    POP     HL            ; HL es la coordenada y de nuevo
+    PUSH    DE                  
+    LD      DE, (GYH)     ; Carga el alto del view port
+    EXX
+    LD      HL,0
+    LD      DE,0
+    LD	    A,10
+    CALL    FPP		;MULTIPLY
+
+DIVIDE_BY_1024:
+    EXX
+    LD      DE, 1024
+    EXX
+    LD      DE, 0         ; Divisor está en DED'É'
+    LD      BC,0          ;exponente tiene que ser 0 en ambos numeros
+    LD      A,1
+    CALL    FPP		  ;IBDIV         ; after the mul and div the number is 16 bits
+    EXX
+    ;after the mul and div the number is 16 bits HL contiene 
+    POP     DE            ; carga X escalado 
+    POP     BC
+    POP     AF
+    RET
+
+;--------------------------------------VDU OPERATIONS--------------------------------------
 
 ;POINT - var=POINT(x,y)
 ; read the color of the pixel xy
@@ -724,7 +928,7 @@ MODE:	CALL	EXPRI
 	EXX
 	LD	H,L
 	LD	L,22        ;22 is the VDU command for changing screen mode
-	CALL	WRCH2   ;seems writing the vdu command (22) and then the mode, changes the graphic mode
+	CALL	WRCH2   ;writes the vdu command (22) and then the mode, changes the graphic mode
 	JR	XEQGO1
 ;
 ;CLG
@@ -753,7 +957,7 @@ COLOUR:	CALL	EXPRI		;n
 	EXX
 	LD	A,(IY)
 	CP	','
-        JR      Z,PALCOL
+    JR      Z,PALCOL
 	LD	H,L
 	LD	L,17
 	CALL	WRCH2
