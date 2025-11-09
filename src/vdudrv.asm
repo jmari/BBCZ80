@@ -72,7 +72,7 @@ TFILL	EQU	03H
 	POSIT		EQU  	00C6H		;Function: 	Moves the cursor
 									;Input: 	H = X-coordinate of the cursor, L for the Y-coordinate
 									;Output: 	None
-Modify: 	AF 
+
 ; ---------MSX ROM BIOS VARS
     GXPOSH      EQU     0FCB3h 	 	;2 	X-position of graphic cursor
     GYPOSH      EQU     0FCB5h 	 	;2 	Y-position of graphic cursor
@@ -126,6 +126,7 @@ Modify: 	AF
 	PUBLIC  GOY	
 	PUBLIC  GXW	
 	PUBLIC  GYH	
+	PUBLIC  PCSR
 ;
 
 
@@ -308,21 +309,21 @@ VDU4:RET
 VDU5:RET
 VDU6:RET
 VDU7:
-	;VDU 8 command is the Cursor left character so we only need to call BDOS end return
-   	LD 	E, BEL ;LF
+	;VDU 7 command is the bell character so we only need to call BDOS end return
+   	LD 	E, BEL ;BELL
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
 	CALL  CPM       
 	RET
 VDU8:
-	;VDU 8 command is the Cursor left character so we only need to call BDOS end return
+	;VDU 8 command is the LF character so we only need to call BDOS end return
    	LD 	E, CLF ;LF
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
 	CALL  CPM       
 	RET
 VDU9:
-	;VDU 8 command is the Cursor left character so we only need to call BDOS end return
+	;VDU 9 command is the Cursor right character so we only need to call BDOS end return
    	LD 	E, CRG;LF
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
@@ -336,8 +337,8 @@ VDU10:
 	CALL  CPM       
 	RET
 VDU11:
-	;VDU 10 command is the LF character so we only need to call BDOS end return
-   	LD 	E, CUP ;LF
+	;VDU 10 command is the cursor up character so we only need to call BDOS end return
+   	LD 	E, CUP ;Cursor UP
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
 	CALL  CPM       
@@ -439,9 +440,12 @@ VDU127:RET
 
 
 OSWRCH_WITHOUT_READ:
-;------We need this becuse OSWRCH uses 06h cpm call 
-;------06h subrutine cannot send FF to the standard output
-OSWRCH:	
+;------We need this OSWRCH_WITHOUT_READ for VDU Command because 
+;------cmos.OSWRCH (cmos.asm) uses 06h cpm call 
+;------06h subrutine cannot send FF to the console output
+;------and we need that to send logical coords to the VDU
+;------vdudrv.OSWRCH uses 02H subrutine so only writes to console
+OSWRCH:	 
 	PUSH AF
 	PUSH DE
 	LD  E, A
@@ -449,6 +453,28 @@ OSWRCH:
 	CALL BDOS0	
 	POP DE
 	POP AF
+	RET
+
+;GOSWRCH function: Writes a character to the standard output
+;		 Input: E is the character to print
+;destroys DE, AF'
+GOSWRCH:
+	LD 	   A,E  ; FOR CONVENIENCE WITH CPM CALL 
+	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
+	LD     DE, SCRMOD   
+	EX     AF,AF'
+	LD     A, (DE)      ; A = display mode
+	CP     0
+	JR     Z,GOSWRCH_TEXMODE
+	EX     AF,AF'
+	LD     IX, GRPPRT
+	CALL   CALSLT        
+	JR EXIT_GOSWRCH
+GOSWRCH_TEXMODE:
+	EX     AF,AF'
+	LD     IX, CHPUT     ; print one char in text mode 
+	CALL   CALSLT        ; call interslot subrutine
+EXIT_GOSWRCH:
 	RET
 
 ;----READY----
@@ -850,12 +876,14 @@ PCSR:
 	LD (HL), 0  ; 0fCB3   ;no se para que sirve
 	RET
 	
+
+
 ; 3. Imprimir el string
-;	LD     DE, mensaje
+;	Input     DE: byte string ended by "0"
 PRINT_STRING:
 
-	LD     A, (DE)  ; Carga la dirección del string
-	CP     13
+	LD     A, (DE)  ; loads first char in the string ended by null (0)
+	CP     0
 	JR     Z, EXIT_PRINT
 	PUSH   DE
 	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
@@ -1373,30 +1401,30 @@ WAIT1:	CALL	TRAP
 
 
 VDU25:	LD	B,25
-WRCH6:	LD	A,B
-	CALL	OSWRCH
-WRCH5:	LD	A,C
-	CALL	OSWRCH
-WRCH4:	LD	A,E
-	CALL	OSWRCH
-WRCH3:	LD	A,D
-	CALL	OSWRCH
-WRCH2:	LD	A,L   
-	CALL	OSWRCH
-	LD	A,H
-	JP	OSWRCH
-;
-EXPR3:	CALL	CEXPRI
-	EXX
-	PUSH	HL
-	CALL	CEXPRI
-	EXX
-	PUSH	HL
-	CALL	CEXPRI
-	EXX
-	POP	BC		;x2
-	POP	DE		;y1
-	RET
+	WRCH6:	LD	A,B
+		CALL	OSWRCH
+	WRCH5:	LD	A,C
+		CALL	OSWRCH
+	WRCH4:	LD	A,E
+		CALL	OSWRCH
+	WRCH3:	LD	A,D
+		CALL	OSWRCH
+	WRCH2:	LD	A,L   
+		CALL	OSWRCH
+		LD	A,H
+		JP	OSWRCH
+	;
+	EXPR3:	CALL	CEXPRI
+		EXX
+		PUSH	HL
+		CALL	CEXPRI
+		EXX
+		PUSH	HL
+		CALL	CEXPRI
+		EXX
+		POP	BC		;x2
+		POP	DE		;y1
+		RET
 ;
 CEXPRI:	CALL	COMMA
 	JP	EXPRI

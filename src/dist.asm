@@ -28,11 +28,13 @@ CPM	EQU	5
 	PUBLIC  KEY_TAB_END
 ;	
 	EXTERN COLD
+
 ;
 ;BDOS	- Save the IX & IY registers & before performing a
 ;	  CP/M function call.
 ;
 	EXTERN BDOS
+	EXTERN PCSR
 ;
 ;	ASEG
 	ORG	100H
@@ -179,7 +181,7 @@ CLS: PUSH IX
 ;
 
 
-PCSR: 
+PCSR_OLD: 
 	PUSH IX
 	PUSH IY
     LD  H, E       ; Cargar en C la coordenada X (columna)
