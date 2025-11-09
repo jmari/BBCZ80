@@ -143,10 +143,8 @@ PCSR:
         ; 3. Imprimir el string
         LD     DE, mensaje
 PRINT_STRING:
-
         LD     A, (DE)  ; Carga la dirección del string
         CP     13
-
         JR     Z, EXIT_PRINT
         PUSH   DE
         LD     IY,(EXPTBL-1)       ;BIOS slot in iy

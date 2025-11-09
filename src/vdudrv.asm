@@ -69,6 +69,10 @@ TFILL	EQU	03H
                                     ;Input    : A  - ASCII code of character to display
     CHGET       EQU     009Fh       ;Function : One character input (waiting)
                                     ;Output   : A  - ASCII code of the input character 
+	POSIT		EQU  	00C6H		;Function: 	Moves the cursor
+									;Input: 	H = X-coordinate of the cursor, L for the Y-coordinate
+									;Output: 	None
+Modify: 	AF 
 ; ---------MSX ROM BIOS VARS
     GXPOSH      EQU     0FCB3h 	 	;2 	X-position of graphic cursor
     GYPOSH      EQU     0FCB5h 	 	;2 	Y-position of graphic cursor
@@ -356,7 +360,13 @@ VDU18:RET
 VDU19:RET
 VDU20:RET
 VDU21:RET
-VDU22:
+VDU22: 
+;VDU 22 is identical to MODE, except that MODE zeros the value of COUNT whereas VDU 22 does not. 
+;The mode is set according to the value of the byte following the VDU 22 command. 
+;The example below sets mode 3.
+;   VDU 22,3
+
+
 		LD A,(VDU_ARGV)
 		;Reset ORIGIN
 		LD     HL,0
@@ -369,18 +379,20 @@ VDU22:
 		JR     Z, SET_VIEWPORT_HR
 		CP     7;
 		JR     Z, SET_VIEWPORT_HR
-	SET_VIEWPORT_MR:
-		LD     HL,256
-		LD     (GXW), HL
-		LD     HL,212
-		LD     (GYH), HL
-		JR CALL_CHMOD
 	SET_VIEWPORT_LR:
 		LD     HL,256
 		LD     (GXW), HL
 		LD     HL,192
 		LD     (GYH), HL
 		JR CALL_CHMOD
+
+	SET_VIEWPORT_MR:
+		LD     HL,256
+		LD     (GXW), HL
+		LD     HL,212
+		LD     (GYH), HL
+		JR CALL_CHMOD
+
 	SET_VIEWPORT_HR:
 		LD     HL,512
 		LD     (GXW), HL
@@ -683,7 +695,7 @@ PUTIMS:	LD	A,E		;Length
 	LD	A,15
 	JP	OSWORD
 
-;-----------------------------SCALING UTILITIES-------------------------------------
+;-----------------------------------------SCALING UTILITIES-------------------------------------------
 ; SCALE_POS convert row/Column to pixel position
 ; Inputs: H = Fila (0-23), L = Columna (0-79)
 ; Outputs:  DE = Coordenadas de píxel (H = X, L = Y)
@@ -737,7 +749,7 @@ IS_TXT_MODE:
     LD H, L     ; Mueve el contenido de L a H
     LD L, A     ; Mueve el contenido de A (que era H) a L
     PUSH HL
-    LD	IX,00C6H             ;address of BIOS routine
+    LD	IX, POSIT             ;address of posit BIOS routine
 	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
 	CALL   001Ch      ; CALSLT
     POP DE
@@ -807,6 +819,66 @@ DIVIDE_BY_1024:
     POP     BC
     POP     AF
     RET
+
+;
+;PCSR	- Move cursor to specified position.
+;   	  Inputs: DE = horizontal position (LHS=0)
+;                 HL = vertical position (TOP=0)
+; 	  Destroys: A,D,E,H,L,F
+;
+PCSR:
+	PUSH BC     ;STORES BC
+	CALL SCALE_TEXT_POS ; DEL and HL are now scaled to graphic position 
+	LD BC,HL
+	LD  HL, GRPACYL
+	LD (HL), B  ;accumulator Y coordenadas gráficas L
+	dec HL
+	LD (HL), C  ;accumulator Y coordenadas gráficas H
+	dec HL
+	LD BC,DE
+	LD (HL), B  ;accumulator X coordenada grafica L
+	dec HL
+	LD (HL), C  ;accumulator X coordenadas gráficas H
+	
+	dec  HL     ;
+	LD (HL), 0  ; 0fCB6   ;no se para que sirve
+	dec HL
+	LD (HL), 0  ; 0fCB5   ;no se para que sirve
+	dec  HL     ;
+	LD (HL), 0  ; 0fCB4   ;no se para que sirve
+	dec HL
+	LD (HL), 0  ; 0fCB3   ;no se para que sirve
+	RET
+	
+; 3. Imprimir el string
+;	LD     DE, mensaje
+PRINT_STRING:
+
+	LD     A, (DE)  ; Carga la dirección del string
+	CP     13
+	JR     Z, EXIT_PRINT
+	PUSH   DE
+	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
+	LD     DE, SCRMOD   
+	EX     AF,AF'
+	LD     A, (DE)      ; A = display mode
+	CP     0
+	JR     Z,PS1
+	EX     AF,AF'
+	LD     IX, GRPPRT
+	CALL   CALSLT        
+	JR PS2
+PS1:
+	EX     AF,AF'
+	LD     IX, CHPUT     ; print one char in text mode 
+	CALL   CALSLT        ; call interslot subrutine
+PS2:
+	POP    DE
+	INC    DE
+	JR     PRINT_STRING
+EXIT_PRINT:
+	POP BC
+	RET
 
 ;--------------------------------------VDU OPERATIONS--------------------------------------
 
