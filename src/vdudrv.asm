@@ -243,6 +243,11 @@ BDOS_CALL:
 	POP	IY
 	POP	IX
 	RET
+VDU_GWRITE:
+	CALL	GOSWRCH
+	POP	IY
+	POP	IX
+	RET
 VDU_CMD:
 	LD A,E          
 	CP 0FFH         ; if the byte is FF it is requesting for a key input
@@ -253,7 +258,7 @@ VDU_CMD_W:
 	JR NZ,VDU_READ_PARAMS_MODE
 	LD A,E  
 	CP 31           ; else if the byte is ge to 31 it is not a VDU cmd
-	JR NC, BDOS_CALL
+	JR NC, VDU_GWRITE
 	LD HL,VDU_MODE	; else it is a VDU command
 	LD (HL),E       ; stores current command in VDU_MODE
 	LD HL,VDU_ARGV  ;
@@ -313,35 +318,35 @@ VDU7:
    	LD 	E, BEL ;BELL
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
-	CALL  CPM       
+	CALL GOSWRCH     
 	RET
 VDU8:
 	;VDU 8 command is the LF character so we only need to call BDOS end return
    	LD 	E, CLF ;LF
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
-	CALL  CPM       
+	CALL GOSWRCH     
 	RET
 VDU9:
 	;VDU 9 command is the Cursor right character so we only need to call BDOS end return
    	LD 	E, CRG;LF
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
-	CALL  CPM       
+	CALL GOSWRCH     
 	RET
 VDU10:
 	;VDU 10 command is the LF character so we only need to call BDOS end return
    	LD 	E, LF ;LF
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
-	CALL  CPM       
+	CALL GOSWRCH     
 	RET
 VDU11:
 	;VDU 10 command is the cursor up character so we only need to call BDOS end return
    	LD 	E, CUP ;Cursor UP
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
-	CALL  CPM       
+	CALL GOSWRCH     
 	RET
 VDU12:
 	CALL CLRSCN
@@ -350,8 +355,7 @@ VDU13:
 	;VDU 13, D command is the CR character so we only need to call BDOS end return
    	LD 	E, CR ;CR
 	LD  C, BDOS_CONSOLE_OUTPUT
-	LD  B, 0 
-	CALL  CPM       
+	CALL GOSWRCH     
 	RET
 VDU14:RET
 VDU15:RET
@@ -380,17 +384,18 @@ VDU22:
 		JR     Z, SET_VIEWPORT_HR
 		CP     7;
 		JR     Z, SET_VIEWPORT_HR
-	SET_VIEWPORT_LR:
-		LD     HL,256
-		LD     (GXW), HL
-		LD     HL,192
-		LD     (GYH), HL
-		JR CALL_CHMOD
 
 	SET_VIEWPORT_MR:
 		LD     HL,256
 		LD     (GXW), HL
 		LD     HL,212
+		LD     (GYH), HL
+		JR CALL_CHMOD
+	
+	SET_VIEWPORT_LR:
+		LD     HL,256
+		LD     (GXW), HL
+		LD     HL,192
 		LD     (GYH), HL
 		JR CALL_CHMOD
 
@@ -464,16 +469,17 @@ GOSWRCH:
 	LD     DE, SCRMOD   
 	EX     AF,AF'
 	LD     A, (DE)      ; A = display mode
-	CP     0
-	JR     Z,GOSWRCH_TEXMODE
+	CP     2
+	JR     C,GOSWRCH_TEXMODE
 	EX     AF,AF'
 	LD     IX, GRPPRT
 	CALL   CALSLT        
 	JR EXIT_GOSWRCH
 GOSWRCH_TEXMODE:
 	EX     AF,AF'
-	LD     IX, CHPUT     ; print one char in text mode 
-	CALL   CALSLT        ; call interslot subrutine
+	LD     E, A     ; print one char in text mode 
+	;LD 	C,2 
+	CALL   CPM        ; call interslot subrutine
 EXIT_GOSWRCH:
 	RET
 
