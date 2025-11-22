@@ -39,6 +39,13 @@ TTO	EQU	0B8H
 TFILL	EQU	03H
 ;
 
+
+;VDP
+
+
+VDP_DPORT EQU 98H
+VDP_RPORT EQU 99H
+
 	EXTERN	ITEMI
 	EXTERN	EXPRI
 	EXTERN	COMMA
@@ -72,14 +79,33 @@ TFILL	EQU	03H
 	POSIT		EQU  	00C6H		;Function: 	Moves the cursor
 									;Input: 	H = X-coordinate of the cursor, L for the Y-coordinate
 									;Output: 	None
+	
 
 ; ---------MSX ROM BIOS VARS
+	CSRXTP		EQU 	0FCB5h		;X CURSOR position in text mode
+	CSRYTP		EQU 	0FCB6h		;Y CURSOR position in text mode
+	MAXCOL		EQU		0FCB1h		;MAX columns in text mode
+	MAXROW		EQU 	0FCB0h		;MAX rows in text mode
     GXPOSH      EQU     0FCB3h 	 	;2 	X-position of graphic cursor
     GYPOSH      EQU     0FCB5h 	 	;2 	Y-position of graphic cursor
     GRPACXH     EQU     0FCB7h 	 	;2 	X Graphics Accumulator
-    GRPACYH     EQU     0FCB9h 	 	;H  Y Graphics Accumulator  	
-    GRPACYL     EQU     0FCBAh      ;L  Y Graphics Accumulator  
+    GRPACYL   	EQU     0FCB9h 	 	;H  Y Graphics Accumulator  	
+    GRPACYH     EQU     0FCBAh      ;L  Y Graphics Accumulator  
     SCRMOD      EQU     0FCAFh      ; Current Screen mode
+;----------Graphic Viewport variables----------
+	VDU_GVOX:	DEFW 0000H	
+	VDU_GVOY:	DEFW 0000H
+	VDU_GVXW: 	DEFW 0000H
+	VDU_GVXH:	DEFW 0000H
+;----------Text Viewport variables-------------
+	VDU_TVOX:	DEFB 0000H	
+	VDU_TVOY:	DEFB 0000H
+	VDU_TVXW: 	DEFB 0000H
+	VDU_TVXH:	DEFB 0000H
+;----------------------------------------------
+	SCROLL_Y_POS: DEFB 00H
+
+
 ;
 	;PUBLIC	OSCALL      implemented in cmos.asm
 	EXTERN	CLRSCN      ;implemented in dist.asm
@@ -122,10 +148,10 @@ TFILL	EQU	03H
 	PUBLIC  BDOS
 	PUBLIC  BDOS0
 	PUBLIC  OSWRCH_WITHOUT_READ
-	PUBLIC  GOX	
-	PUBLIC  GOY	
-	PUBLIC  GXW	
-	PUBLIC  GYH	
+	PUBLIC  VDU_GVOX	
+	PUBLIC  VDU_GVOY	
+	PUBLIC  VDU_GVXW	
+	PUBLIC  VDU_GVXH	
 	PUBLIC  PCSR
 ;
 
@@ -211,11 +237,6 @@ VDU_SUBR_LIST:		; VDU jump table
 	DEFW VDU31
 	;DEFW VDU127
 
-;----------Viewport variables----------
-	GOX:	DEFW 0000H	
-	GOY:	DEFW 0000H
-	GXW: 	DEFW 0000H
-	GYH:	DEFW 0000H
 
 ;...
 BDOS0:	PUSH	BC
@@ -257,7 +278,7 @@ VDU_CMD_W:
 	CP 0			; if not 0 read this byte is an argument 
 	JR NZ,VDU_READ_PARAMS_MODE
 	LD A,E  
-	CP 31           ; else if the byte is ge to 31 it is not a VDU cmd
+	CP 32           ; else if the byte is ge to 31 it is not a VDU cmd
 	JR NC, VDU_GWRITE
 	LD HL,VDU_MODE	; else it is a VDU command
 	LD (HL),E       ; stores current command in VDU_MODE
@@ -375,8 +396,8 @@ VDU22:
 		LD A,(VDU_ARGV)
 		;Reset ORIGIN
 		LD     HL,0
-		LD     (GOX),HL
-		LD     (GOY),HL
+		LD     (VDU_GVOX),HL
+		LD     (VDU_GVOY),HL
 		;SCALE VIEWPORT WIDTH AND HEIGHT DEPENDING ON SCREEN MODE
 		CP     2;
 		JR     Z, SET_VIEWPORT_LR
@@ -387,23 +408,23 @@ VDU22:
 
 	SET_VIEWPORT_MR:
 		LD     HL,256
-		LD     (GXW), HL
+		LD     (VDU_GVXW), HL
 		LD     HL,212
-		LD     (GYH), HL
+		LD     (VDU_GVXH), HL
 		JR CALL_CHMOD
 	
 	SET_VIEWPORT_LR:
 		LD     HL,256
-		LD     (GXW), HL
+		LD     (VDU_GVXW), HL
 		LD     HL,192
-		LD     (GYH), HL
+		LD     (VDU_GVXH), HL
 		JR CALL_CHMOD
 
 	SET_VIEWPORT_HR:
 		LD     HL,512
-		LD     (GXW), HL
+		LD     (VDU_GVXW), HL
 		LD     HL,212
-		LD     (GYH), HL
+		LD     (VDU_GVXH), HL
 	CALL_CHMOD:
 		LD     IY,(EXPTBL-1)       ;BIOS slot in iy
 		LD     IX, CHGMOD    
@@ -428,18 +449,26 @@ VDU29:
 	LD H,A                 ;DE HAS X COORD
 	;SCALE
     CALL    SCALE_GRAPHIC_POS
-	;LOADS SCALED COORD TO GOX AND GOY
+	;LOADS SCALED COORD TO VDU_GVOX AND VDU_GVOY
 	LD A,E
-	LD (GOX),A 		;LOW BYTE GRAPHIC ORIGIN X
+	LD (VDU_GVOX),A 		;LOW BYTE GRAPHIC ORIGIN X
 	LD A,D
-	LD (GOX+1),A 	;HIGH BYTE GRAPHIC ORIGIN X
+	LD (VDU_GVOX+1),A 	;HIGH BYTE GRAPHIC ORIGIN X
 	LD A,L
-	LD (GOY),A		;LOW BYTE GRAPHIC ORIGIN Y
+	LD (VDU_GVOY),A		;LOW BYTE GRAPHIC ORIGIN Y
 	LD A,H
-	LD (GOY+1),A	;HIGH BYTE GRAPHIC ORIGIN X
+	LD (VDU_GVOY+1),A	;HIGH BYTE GRAPHIC ORIGIN X
 	RET
 VDU30:RET
-VDU31:RET
+VDU31:
+	LD A,(VDU_ARGV)
+	LD L,A
+	LD H,0
+	LD A,(VDU_ARGV+1)
+	LD E,A    
+	LD D,0             
+	CALL PCSR
+	RET
 VDU127:RET
 
 
@@ -465,7 +494,6 @@ OSWRCH:
 ;destroys DE, AF'
 GOSWRCH:
 	LD 	   A,E  ; FOR CONVENIENCE WITH CPM CALL 
-	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
 	LD     DE, SCRMOD   
 	EX     AF,AF'
 	LD     A, (DE)      ; A = display mode
@@ -473,7 +501,11 @@ GOSWRCH:
 	JR     C,GOSWRCH_TEXMODE
 	EX     AF,AF'
 	LD     IX, GRPPRT
-	CALL   CALSLT        
+	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
+	CALL   CALSLT    
+	LD A,(GRPACYL)
+	CP 208
+	CALL NC,VSCROLL    
 	JR EXIT_GOSWRCH
 GOSWRCH_TEXMODE:
 	EX     AF,AF'
@@ -482,6 +514,30 @@ GOSWRCH_TEXMODE:
 	CALL   CPM        ; call interslot subrutine
 EXIT_GOSWRCH:
 	RET
+
+
+
+WRITE_VDP:
+	LD A,L
+	DI
+	OUT (VDP_RPORT),A
+	LD A,H
+	OUT (VDP_RPORT),A
+	EI
+	RET
+
+VSCROLL:
+
+	LD A,(SCROLL_Y_POS)
+	ADD A,1
+	LD (SCROLL_Y_POS),A
+	LD  L,A
+	LD  H,97H  ;R23 CON BIT 7 A 1 PARA ESCRIBIR
+	CALL WRITE_VDP
+	LD A,0
+	LD (GRPACYL), A
+	RET
+
 
 ;----READY----
 ;GETIMS	- Read real-time clock as string.
@@ -783,7 +839,7 @@ IS_TXT_MODE:
     PUSH HL
     LD	IX, POSIT             ;address of posit BIOS routine
 	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
-	CALL   001Ch      ; CALSLT
+	CALL   CALSLT      ; CALSLT
     POP DE
     POP BC
     POP AF
@@ -805,7 +861,7 @@ SCALE_GRAPHIC_POS:
     ; Subrutina para escalar un valor rango 1280 al ancho del viewport.
     ;
 
-    LD      HL, (GXW)     ; Carga el primer entero en el registro HL
+    LD      HL, (VDU_GVXW)     ; Carga el primer entero en el registro HL
     EXX                   ; Cambia a los registros alternos HL' tiene el ancho del viewport     
                           ; DE' contiene la porsicion x
     LD      HL, 0         ; Pone a cero HL (bits 31 al 16 del nº entero de 32 bits)
@@ -830,7 +886,7 @@ DIVIDE_BY_1280:
 SCALE_1024_TO_VIEPORT_HEIGHT:
     POP     HL            ; HL es la coordenada y de nuevo
     PUSH    DE                  
-    LD      DE, (GYH)     ; Carga el alto del view port
+    LD      DE, (VDU_GVXH)     ; Carga el alto del view port
     EXX
     LD      HL,0
     LD      DE,0
@@ -859,18 +915,22 @@ DIVIDE_BY_1024:
 ; 	  Destroys: A,D,E,H,L,F
 ;
 PCSR:
-	PUSH BC     ;STORES BC
-	CALL SCALE_TEXT_POS ; DEL and HL are now scaled to graphic position 
-	LD BC,HL
-	LD  HL, GRPACYL
-	LD (HL), B  ;accumulator Y coordenadas gráficas L
+	LD A,E
+	LD (CSRXTP),A
+	LD A,L	
+	LD (CSRYTP),A
+	LD H,A
+	LD L,E
+	CALL SCALE_TEXT_POS ; DE has now scaled to graphic position 
+	
+	LD  HL, GRPACYH
+	LD (HL), 0  ;accumulator Y coordenadas gráficas H
 	dec HL
-	LD (HL), C  ;accumulator Y coordenadas gráficas H
+	LD (HL), E  ;accumulator Y coordenadas gráficas L
 	dec HL
-	LD BC,DE
-	LD (HL), B  ;accumulator X coordenada grafica L
+	LD (HL), 0  ;accumulator X coordenada grafica D
 	dec HL
-	LD (HL), C  ;accumulator X coordenadas gráficas H
+	LD (HL), D  ;accumulator X coordenadas gráficas E
 	
 	dec  HL     ;
 	LD (HL), 0  ; 0fCB6   ;no se para que sirve
