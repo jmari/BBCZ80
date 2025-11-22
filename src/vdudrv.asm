@@ -785,12 +785,10 @@ PUTIMS:	LD	A,E		;Length
 
 ;-----------------------------------------SCALING UTILITIES-------------------------------------------
 ; SCALE_POS convert row/Column to pixel position
-; Inputs: H = Fila (0-23), L = Columna (0-79)
-; Outputs:  DE = Coordenadas de píxel (H = X, L = Y)
+; Inputs: H = Fila (0-23), L = Columna (0-79) (H = Y, L = X)
+; Outputs:  DE = Coordenadas de píxel 
 ;          Los registros AF, DE se preservan
 SCALE_TEXT_POS:
-    PUSH AF
-    PUSH BC
 
     ; get the screen mode
     LD A, (SCRMOD)      ; A = display mode
@@ -799,25 +797,27 @@ SCALE_TEXT_POS:
     CP 2
     JR C, IS_TXT_MODE       ; Si A < 1 (Modos 0), es modo txt..ojo
     CP 6
-    JR C, IS_40_COLUMNS     ; Si A < 6 (Modos 4 y 5), es de 40/32 columnas
+    JR C, IS_32_COLUMNS     ; Si A < 6 (Modos 4 y 5), es de 40/32 columnas
     CP 8
-    JR Z, IS_40_COLUMNS     ; Si A == 8, es de 32 columnas
+    JR Z, IS_32_COLUMNS     ; Si A == 8, es de 32 columnas
     
     ; Lógica para 80 columnas (caracteres de 6 píxeles de ancho)
+	CALL Y_CALC     ;E has Y pos
     LD A, L
     SLA A           ; A = Columna * 2
     ADD A, L        ; A = Columna * 3
-    SLA A           ; A = Columna * 6
+    SLA A           ; A = Columna * 6  Carry bit one needed for High Res modes
     LD D, A         ; D = Coordenada X
-    JR Y_CALC
+    RET				; 
 
-IS_40_COLUMNS:
-    ; Lógica para 40 columnas (caracteres de 8 píxeles de ancho)
+IS_32_COLUMNS:
+    ; Lógica para 32 columnas (caracteres de 8 píxeles de ancho)
     LD A, L
     SLA A           ; A = Columna * 2
     SLA A           ; A = Columna * 4
     SLA A           ; A = Columna * 8
     LD D, A         ; D = Coordenada X
+
 
 Y_CALC:
     ; Calcular Y (Fila * 8), siempre 8 píxeles de alto
@@ -826,10 +826,8 @@ Y_CALC:
     SLA A           ; A = Fila * 4
     SLA A           ; A = Fila * 8
     LD E, A         ; E = Coordenada Y
-
-    POP BC
-    POP AF
     RET
+
 
 IS_TXT_MODE:
     ;HL has yx
@@ -841,8 +839,6 @@ IS_TXT_MODE:
 	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
 	CALL   CALSLT      ; CALSLT
     POP DE
-    POP BC
-    POP AF
     RET
 
 ; SCALE_GRAPHIC_POS:cALCULATES PIXEL COORDS
@@ -921,14 +917,20 @@ PCSR:
 	LD (CSRYTP),A
 	LD H,A
 	LD L,E
-	CALL SCALE_TEXT_POS ; DE has now scaled to graphic position 
+	CALL SCALE_TEXT_POS ; DE has now scaled to graphic position;
+						; C=1 for X>256
 	
 	LD  HL, GRPACYH
 	LD (HL), 0  ;accumulator Y coordenadas gráficas H
 	dec HL
 	LD (HL), E  ;accumulator Y coordenadas gráficas L
 	dec HL
+	JR NC, PCSR_NO_CARRY
+	LD (HL), 1  ;accumulator X coordenada grafica D
+	JR PCSR_CARRY
+PCSR_NO_CARRY:
 	LD (HL), 0  ;accumulator X coordenada grafica D
+PCSR_CARRY:
 	dec HL
 	LD (HL), D  ;accumulator X coordenadas gráficas E
 	
