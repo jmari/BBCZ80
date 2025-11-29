@@ -42,9 +42,139 @@ TFILL	EQU	03H
 
 ;VDP
 
+; --- Definiciones de Puertos y Registros VDP ---
+VDP_DATA_PORT   EQU 98h
+VDP_CTRL_PORT   EQU 99h
 
-VDP_DPORT EQU 98H
-VDP_RPORT EQU 99H
+R36 EQU 36
+R38 EQU 38
+R40 EQU 40
+R42 EQU 42
+R44 EQU 44
+R46 EQU 46   ; CMD register when using this command set
+
+; --- Subrutina Principal ---
+; --- Variables de Datos (en segmento de datos/BSS) ---
+StartX:     DW 50
+StartY:     DW 50
+EndX:       DW 200
+EndY:       DW 150
+Color:		DB 0
+LogOp:		DB 0
+
+
+;****************************************************************
+; draws LINE 
+;        to use, set H, L, D, E, B, A and go
+;        draw LINE (H,L)-(D,E) with color B, log-op A
+; H,L,D,E absolute values
+;****************************************************************
+
+
+DRAW_LINE_CMD:
+	push ix
+	ld ix,StartX
+	ld h,(ix)
+	ld l,(ix+2)
+	ld d,(ix+4)
+	ld e,(ix+6)
+	ld b,(ix+8)
+	ld a,(ix+9)
+	pop ix
+_iline:
+	push	af		;save LOGICAL OPERATION
+	push	bc		;save COLOR            
+	call	WAIT_VDP_READY
+
+
+	ld	a,36
+	out	(099h),a
+	ld	a,128+17
+	out	(99h),a	;R#17 := 36
+	xor	a
+	ld	c,09bh
+	out	(c),h		;X from
+	out	(c),a
+	out	(c),l		;Y from
+	out	(c),a
+ 
+	ld	a,h		;make DX and DIX
+	sub	d
+	ld	d,00000100b
+	jr	nc,gLINE1
+	ld	d,00000000b
+	neg
+gLINE1:
+	ld	h,a 		;H := DX , D := DIX
+	ld	a,l		;make DY and DIY
+	sub	e
+	ld	e,00001000b
+	jr	nc,gLINE2
+	ld	e,00000000b
+	neg
+gLINE2:
+	ld	l,a		;L := DY , E := DIY
+	cp	h		;make Maj and Min
+	jr	c,gLINE3
+	xor	a
+	out	(c),l		;long side
+	out	(c),a
+	out	(c),h		;short side
+	out	(c),a
+	ld	a,00000001b	;MAJ := 1
+	jr	gLINE4
+gLINE3:
+	xor	a
+	out	(c),h		;NX
+	out	(c),a
+	out	(c),l		;NY
+	out	(c),a
+	ld	a,00000000b	;MAJ := 0
+gLINE4:
+	or	d
+	or	e		;A := DIX , DIY , MAJ
+	pop	hl		;H := COLOR
+	out	(c),h
+	out	(c),a
+	pop	af         	;A := LOGICAL OPERATION
+	or	01110000b
+	out	(c),a
+	ld	a,08Fh
+	out	(c),a
+	ret
+
+
+
+
+
+;
+; Fast DoCopy, by Grauw
+; In:  HL = pointer to 15-byte VDP command data
+; Out: HL = updated
+;
+WRITE_VDP_REG:
+    out (VDP_CTRL_PORT),a
+    ld a,b
+	or 80h 
+    out (VDP_CTRL_PORT),a
+	;call WAIT_VDP_READY after you should always have to enable Interruptions
+   
+WAIT_VDP_READY:
+	
+    ld a,2
+    di
+    out (VDP_CTRL_PORT),a     ; select s#2
+    ld a,15 + 128
+    out (VDP_CTRL_PORT),a
+    in a,(VDP_CTRL_PORT)
+    rra
+    ld a,0          ; back to s#0, enable ints
+    out (VDP_CTRL_PORT),a
+    ld a,15 + 128
+    ei
+    out (VDP_CTRL_PORT),a     ; loop if vdp not ready (CE)
+    jp c,WAIT_VDP_READY
+    ret
 
 	EXTERN	ITEMI
 	EXTERN	EXPRI
@@ -88,7 +218,7 @@ VDP_RPORT EQU 99H
 	MAXROW		EQU 	0FCB0h		;MAX rows in text mode
     GXPOSH      EQU     0FCB3h 	 	;2 	X-position of graphic cursor
     GYPOSH      EQU     0FCB5h 	 	;2 	Y-position of graphic cursor
-    GRPACXH     EQU     0FCB7h 	 	;2 	X Graphics Accumulator
+    GRPACXL     EQU     0FCB7h 	 	;2 	X Graphics Accumulator
     GRPACYL   	EQU     0FCB9h 	 	;H  Y Graphics Accumulator  	
     GRPACYH     EQU     0FCBAh      ;L  Y Graphics Accumulator  
     SCRMOD      EQU     0FCAFh      ; Current Screen mode
@@ -194,7 +324,7 @@ VDU_ARGC_LIST:      ; VDU number of arguments table
 	DEFB    1 ;VDU 22 is identical to MODE, except that MODE zeros the value of COUNT whereas VDU 22 does not.
 	DEFB    1 ;VDU 23, Depends on next byte (mode)
 	DEFB    4*2 ;VDU 24 In the graphics modes, VDU 24 defines a graphics window. 
-	DEFB    3*2 ;VDU 25 is identical to the PLOT command
+	DEFB    1+(2*2) ;VDU 25 is identical to the PLOT command
 	DEFB    0 ;VDU 26 resets the text and graphics windows to their default positions 
 	DEFB    0 ;VDU 27 sends the next byte to the screen without interpreting it as a control character.
 	DEFB    4 ;VDU 28 defines a text window. 
@@ -228,7 +358,7 @@ VDU_SUBR_LIST:		; VDU jump table
 	DEFW VDU22
 	DEFW VDU23
 	DEFW VDU24
-	DEFW VDU25
+	DEFW VDU25_DRV ;VDU25 is already defined by the original code for BBC MICRO 
 	DEFW VDU26
 	DEFW VDU27
 	DEFW VDU28
@@ -342,28 +472,28 @@ VDU7:
 	CALL GOSWRCH     
 	RET
 VDU8:
-	;VDU 8 command is the LF character so we only need to call BDOS end return
-   	LD 	E, CLF ;LF
+	;VDU 8 command is the ursor left character so we only need to call BDOS end return
+   	LD 	E, CLF ;cursor left
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
-	CALL GOSWRCH     
+	CALL GOSWRCH    
 	RET
 VDU9:
 	;VDU 9 command is the Cursor right character so we only need to call BDOS end return
-   	LD 	E, CRG;LF
+   	LD 	E, CRG; Cursor right
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
-	CALL GOSWRCH     
+	CALL GOSWRCH   
 	RET
 VDU10:
 	;VDU 10 command is the LF character so we only need to call BDOS end return
    	LD 	E, LF ;LF
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
-	CALL GOSWRCH     
+	CALL GOSWRCH 
 	RET
 VDU11:
-	;VDU 10 command is the cursor up character so we only need to call BDOS end return
+	;VDU 11 command is the cursor up character so we only need to call BDOS end return
    	LD 	E, CUP ;Cursor UP
 	LD  C, BDOS_CONSOLE_OUTPUT
 	LD  B, 0 
@@ -376,7 +506,7 @@ VDU13:
 	;VDU 13, D command is the CR character so we only need to call BDOS end return
    	LD 	E, CR ;CR
 	LD  C, BDOS_CONSOLE_OUTPUT
-	CALL GOSWRCH     
+	CALL GOSWRCH    
 	RET
 VDU14:RET
 VDU15:RET
@@ -433,20 +563,83 @@ VDU22:
 
 VDU23:RET
 VDU24:RET
-;VDU25:RET
+VDU25_DRV:
+	;0 	Move relative to the last point.
+	;1 	Draw a line, in the current graphics foreground colour, relative to the last point.
+	;2 	Draw a line, in the logical inverse colour, relative to the last point.
+	;3 	Draw a line, in the background colour, relative to the last point.
+	;4 	Move to the absolute position X, Y.
+	;5 	Draw a line, in the current foreground colour, to the absolute coordinates specified by X and Y.
+	;6 	Draw a line, in the logical inverse colour, to the absolute coordinates specified by X and Y.
+	;7 	Draw a line, in the current background colour, to the absolute coordinates specified by X and Y.
+	LD A,(VDU_ARGV)
+	LD H,A
+	LD A,(VDU_ARGV+1)
+	LD L,A                 ;HL HAS Y COORD
+	LD A,(VDU_ARGV+2)
+	LD D,A
+	LD A,(VDU_ARGV+3)
+	LD E,A                 ;DE HAS X COORD
+	CALL    SCALE_GRAPHIC_POS  ;LOADS DE WITH X POS AND HL WITH Y POS
+	;CHECK PLOT MODE
+	LD A,(VDU_ARGV+4) 		;loads plot mode
+	CP 4
+	JR NC,PLOT_ABSOLUTE
+	;PLOT_RELATIVE:
+	; ADD 
+		LD BC,(GRPACYL);	X Graphics Accumulator
+		ADD HL,BC
+		LD IX, (GRPACXL);
+		ADD IX,DE
+		LD DE,IX
+	CP 0 					;move relative command
+	JR Z, MOVETO
+	CP 1 					;draw line relative pos in foreground color
+	JR Z, DRAW_LINE_FGC
+	CP 2 					;draw line relative pos in inverse foreground color
+	JR Z, DRAW_LINE_IFG
+	CP 3 					;draw line relative pos in background color
+	JR Z, DRAW_LINE_BGC
+
+	PLOT_ABSOLUTE:
+	CP 4 					;move relative command
+	JR Z, MOVETO
+	CP 5 					;draw line absolute pos in foreground color
+	JR Z, DRAW_LINE_FGC
+	CP 6 					;draw line absolute pos in inverse foreground color
+	JR Z, DRAW_LINE_IFG
+	CP 7 					;draw line absolute pos in background color
+	JR Z, DRAW_LINE_BGC
+	
+	;CMD IMPLEMENTATION
+	MOVETO:
+		LD (GRPACYL),HL
+		LD (GRPACXL),DE
+		RET
+	DRAW_LINE_FGC:
+	DRAW_LINE_IFG:
+	DRAW_LINE_BGC:
+		LD BC, (GRPACXL)
+		LD (StartX), BC
+		LD BC, (GRPACYL)
+		LD (StartY), BC
+		LD (EndX),DE
+		LD (EndY),HL
+		CALL DRAW_LINE_CMD
+	RET
 VDU26:RET
 VDU27:RET
 VDU28:RET
 VDU29:
 	;LOADS DE WITH X POS AND HL WITH Y POS
 	LD A,(VDU_ARGV)
-	LD E,A
+	LD H,A
 	LD A,(VDU_ARGV+1)
-	LD D,A                 ;DE HAS X COORD
+	LD L,A                 ;HL HAS Y COORD
 	LD A,(VDU_ARGV+2)
-	LD L,A
+	LD D,A
 	LD A,(VDU_ARGV+3)
-	LD H,A                 ;DE HAS X COORD
+	LD E,A                 ;DE HAS X COORD
 	;SCALE
     CALL    SCALE_GRAPHIC_POS
 	;LOADS SCALED COORD TO VDU_GVOX AND VDU_GVOY
@@ -520,9 +713,9 @@ EXIT_GOSWRCH:
 WRITE_VDP:
 	LD A,L
 	DI
-	OUT (VDP_RPORT),A
+	OUT (VDP_CTRL_PORT),A
 	LD A,H
-	OUT (VDP_RPORT),A
+	OUT (VDP_CTRL_PORT),A
 	EI
 	RET
 
@@ -844,7 +1037,7 @@ IS_TXT_MODE:
 ; SCALE_GRAPHIC_POS:cALCULATES PIXEL COORDS
 ;   	  Inputs: DE = horizontal position (LEFT=0..1279)
 ;                 HL = vertical position (bottom=0..1023)
-; 	  Destroys: A,D,E,H,L,F
+; 	  Destroys: D,E,H,L
 ;
 SCALE_GRAPHIC_POS:
     PUSH AF                         ;STACK AF
