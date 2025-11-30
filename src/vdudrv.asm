@@ -55,111 +55,104 @@ R46 EQU 46   ; CMD register when using this command set
 
 ; --- Subrutina Principal ---
 ; --- Variables de Datos (en segmento de datos/BSS) ---
-StartX:     DW 50
-StartY:     DW 50
-EndX:       DW 200
-EndY:       DW 150
-Color:		DB 0
-LogOp:		DB 0
+StartX:     DW 50   ;0
+StartY:     DW 50   ;2
+EndX:       DW 200  ;4
+EndY:       DW 150  ;6
+Maj:		DW 150  ;8
+Min:		DW 100  ;10
+lineFlags:	DB 0    ;12
+Color:		DB 0    ;13
+LogOp:		DB 0    ;14
 
 
 
-;****************************************************************
-; draws LINE 
-;        to use, set H, L, D, E, B, A and go
-;        draw LINE (H,L)-(D,E) with color B, log-op A
-; H,L,D,E absolute values
-;****************************************************************
 
-
+CPL_HL:
+    ; Negar el byte bajo (L)
+    ld a, l       ; Cargar el contenido de L en el acumulador A
+    cpl           ; Complementar A bit a bit (A = ~A)
+    ld l, a       ; Guardar el resultado negado de vuelta en L
+    ; Negar el byte alto (H)
+    ld a, h       ; Cargar el contenido de H en el acumulador A
+    cpl           ; Complementar A bit a bit (A = ~A)
+    ld h, a       ; Guardar el resultado negado de vuelta en H
+	inc hl
+    ret           ; Retornar de la subrutina (si se usa como CALL)
 DRAW_LINE_CMD:
 	push ix
 	ld ix,StartX
-	ld h,(ix)
-	ld l,(ix+2)
-	ld d,(ix+4)
-	ld e,(ix+6)
-	ld b,(ix+8)
-	ld a,(ix+9)
+	ld (ix+12),0 ;reset flags
+	ld hl,(ix)
+	ld de,(ix+4)
+	or a
+	set 2,(ix+12)
+	SBC HL, DE
+	bit 7,H
+	jr Z,_positive_left_flag
+	res 2,(ix+12)
+	call CPL_HL    ;nbX es ahora positivo 
+_positive_left_flag:
+	ld (ix+8),hl
+	ld hl,(ix+2)
+	ld de,(ix+6)
+	or a
+	set 3,(ix+12)
+	SBC HL, DE
+	bit 7,H
+	jr Z,_positive_up_flag
+	res 3,(ix+12)
+	call CPL_HL    ;nbY es ahora positivo 
+_positive_up_flag:
+	ld (ix+10),HL
+	ld b,(ix+12)
+	ld a,(ix+14)
+;who is larger
+	ld hl,(ix+8)
+	ld de,(ix+10)
+	or a
+	SBC HL, DE
+	bit 7,H
+	jr Z, _hl_geq_de
+	SET 0,(ix+12)
+	ld hl,(ix+8)
+	LD (ix+8),de
+	LD (ix+10),hl
 
+_hl_geq_de:
 _iline:
-	push	af		;save LOGICAL OPERATION
-	push	bc		;save COLOR            
+         
 	call	WAIT_VDP_READY
-
-
 	ld	a,36
 	out	(099h),a
 	ld	a,128+17
 	out	(99h),a	;R#17 := 36
 	ld	c,09bh
 	xor a
-	out	(c),h		;X from
-	out	(c),a
-	out	(c),l		;Y from
-	out	(c),a
- 
-	ld	a,h		;make DX and DIX
-	sub	d
-	ld	d,00000100b
-	jr	nc,gLINE1
-	ld	d,00000000b
-	neg
-gLINE1:
-	ld	h,a 		;H := DX , D := DIX
-	ld	a,l		;make DY and DIY
-	sub	e
-	ld	e,00001000b
-	jr	nc,gLINE2
-	ld	e,00000000b
-	neg
-gLINE2:
-	ld	l,a		;L := DY , E := DIY
-	cp	h		;make Maj and Min
-	jr	c,gLINE3
-	xor	a
-	out	(c),l		;long side
-	out	(c),a
-	out	(c),h		;short side
-	out	(c),a
-	ld	a,00000001b	;MAJ := 1
-	jr	gLINE4
-gLINE3:
-	xor	a
-	out	(c),h		;NX
-	out	(c),a
-	out	(c),l		;NY
-	out	(c),a
-	ld	a,00000000b	;MAJ := 0
-gLINE4:
-	or	d
-	or	e		;A := DIX , DIY , MAJ
-	pop	hl		;H := COLOR
+	ld hl,(ix)
+	ld de,(ix+2)
+	out	(c),l		;X from
 	out	(c),h
+	out	(c),e		;Y from
+	out	(c),d
+	ld hl,(ix+8)	;Maj
+	ld de,(ix+10)	;Min
+	out	(c),l		;Maj side
+	out	(c),h
+	out	(c),e		;Min side
+	out	(c),d
+	ld a,(ix+13)		;Color
 	out	(c),a
-	pop	af         	;A := LOGICAL OPERATION
+	ld a,(ix+12)		;Flags
+	out	(c),a
+	ld a,(ix+14)		;logical op
 	or	01110000b
-	out	(c),a
-	ld	a,08Fh
 	out	(c),a
 	pop ix
 	ret
 
 
 
-
-
-;
-; Fast DoCopy, by Grauw
-; In:  HL = pointer to 15-byte VDP command data
-; Out: HL = updated
-;
-WRITE_VDP_REG:
-    out (VDP_CTRL_PORT),a
-    ld a,b
-	or 80h 
-    out (VDP_CTRL_PORT),a
-	;call WAIT_VDP_READY after you should always have to enable Interruptions
    
 WAIT_VDP_READY:
 	
