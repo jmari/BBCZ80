@@ -63,6 +63,7 @@ Color:		DB 0
 LogOp:		DB 0
 
 
+
 ;****************************************************************
 ; draws LINE 
 ;        to use, set H, L, D, E, B, A and go
@@ -80,7 +81,7 @@ DRAW_LINE_CMD:
 	ld e,(ix+6)
 	ld b,(ix+8)
 	ld a,(ix+9)
-	pop ix
+
 _iline:
 	push	af		;save LOGICAL OPERATION
 	push	bc		;save COLOR            
@@ -91,8 +92,8 @@ _iline:
 	out	(099h),a
 	ld	a,128+17
 	out	(99h),a	;R#17 := 36
-	xor	a
 	ld	c,09bh
+	xor a
 	out	(c),h		;X from
 	out	(c),a
 	out	(c),l		;Y from
@@ -141,6 +142,7 @@ gLINE4:
 	out	(c),a
 	ld	a,08Fh
 	out	(c),a
+	pop ix
 	ret
 
 
@@ -191,9 +193,8 @@ WAIT_VDP_READY:
 	EXTERN	ACCS
 	EXTERN	COUNT
 	EXTERN	WIDTH
-	EXTERN	SCRAP
 ;
-    EXTERN    FPP       ;for Math subrutines operation
+    EXTERN  FPP       ;for Math subrutines operation
 
 ; ---------MSX ROM BIOS SUBRUTINES
     EXPTBL      EQU 	0FCC1H      ;ROM BIOS SLOT
@@ -372,10 +373,20 @@ VDU_SUBR_LIST:		; VDU jump table
 BDOS0:	PUSH	BC
 	PUSH	DE
 	PUSH	HL
+	EXX
+	PUSH	BC
+	PUSH	DE
+	PUSH	HL
+	EXX
 	LD	C,A
 	CALL	BDOS
 	INC	H
 	DEC	H
+	EXX
+	POP	HL
+	POP	DE
+	POP	BC
+	EXX
 	POP	HL
 	POP	DE
 	POP	BC
@@ -1046,11 +1057,11 @@ SCALE_GRAPHIC_POS:
 
     ;ARITHMETIC & LOGICAL OPERATORS:
     ;All take two arguments, in HLH"L'C & DED'E"B.
-    ;Output in HLH'L'C
+    ; Output in HLH'L'C
     ; Subrutina para escalar un valor rango 1280 al ancho del viewport.
     ;
 
-    LD      HL, (VDU_GVXW)     ; Carga el primer entero en el registro HL
+    LD      HL, (VDU_GVXW); Carga el primer entero en el registro HL
     EXX                   ; Cambia a los registros alternos HL' tiene el ancho del viewport     
                           ; DE' contiene la porsicion x
     LD      HL, 0         ; Pone a cero HL (bits 31 al 16 del nº entero de 32 bits)
@@ -1075,12 +1086,12 @@ DIVIDE_BY_1280:
 SCALE_1024_TO_VIEPORT_HEIGHT:
     POP     HL            ; HL es la coordenada y de nuevo
     PUSH    DE                  
-    LD      DE, (VDU_GVXH)     ; Carga el alto del view port
+    LD      DE, (VDU_GVXH); Carga el alto del view port
     EXX
     LD      HL,0
     LD      DE,0
     LD	    A,10
-    CALL    FPP		;MULTIPLY
+    CALL    FPP		      ;MULTIPLY
 
 DIVIDE_BY_1024:
     EXX
@@ -1089,9 +1100,12 @@ DIVIDE_BY_1024:
     LD      DE, 0         ; Divisor está en DED'É'
     LD      BC,0          ;exponente tiene que ser 0 en ambos numeros
     LD      A,1
-    CALL    FPP		  ;IBDIV         ; after the mul and div the number is 16 bits
+    CALL    FPP		      ;IBDIV  after the mul and div the number is 16 bits
     EXX
-    ;after the mul and div the number is 16 bits HL contiene 
+    LD 		A,(VDU_GVXH)					  
+	DEC 	A                 
+	SUB 	L				  
+	LD 		L,A 		  ; HL contiene Y escalado e invertido
     POP     DE            ; carga X escalado 
     POP     BC
     POP     AF

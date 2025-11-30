@@ -1356,7 +1356,7 @@ CLEAR1:	LD	(HL),0
 ;LISTIT - LIST A PROGRAM LINE.
 ;    Inputs: HL addresses line
 ;            DE = line number (binary)
-;	     E' = indentation count
+;	     	 E' = indentation count
 ;            IX addresses LISTON
 ;  Destroys: A,D,E,B",C',D',E',H',L",IY,F
 ;
