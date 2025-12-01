@@ -152,7 +152,26 @@ _iline:
 	ret
 
 
-
+	;E is the physical color
+	;and the index in the palette table
+_ipalette:    
+	;call	WAIT_VDP_READY i think we dont need that
+	ld	a,E
+	out	(099h),a
+	ld	a,128+16
+	out	(99h),a	   ;R#16 := pysical 
+	ld	c,09bh
+	xor a
+	ld ix,PALETTE
+	rl e
+	ld d,0
+	add ix,de
+	ld a,(ix+1)
+	out	(c),a
+	ld a,(ix)      ;red and blue colors
+	and 00001111b
+	out	(c),a      ;green color
+	ret
    
 WAIT_VDP_READY:
 	
@@ -226,6 +245,27 @@ WAIT_VDP_READY:
 	VDU_TVOY:	DEFB 0000H
 	VDU_TVXW: 	DEFB 0000H
 	VDU_TVXH:	DEFB 0000H
+;-----------Palete copy in ram-----------------
+	PALETTE:  ;logical color,B,RG
+	  			DB 00000000b,00000000b
+				DB 00010010b,00000000b
+				DB 00100000b,00000011b
+				DB 00110010b,00000011b
+				DB 01000000b,00011000b
+				DB 01010010b,00011000b
+				DB 01100000b,00011011b
+				DB 01110010b,00011011b
+				DB 10000010b,00100111b
+				DB 10010111b,00000000b
+				DB 10100000b,00000111b
+				DB 10110111b,00000111b
+				DB 11000000b,00111000b
+				DB 11010111b,00111000b
+				DB 11100000b,00111111b
+				DB 11110111b,00111111b
+
+
+
 ;----------------------------------------------
 	SCROLL_Y_POS: DEFB 00H
 
@@ -517,7 +557,33 @@ VDU15:RET
 VDU16:RET
 VDU17:RET
 VDU18:RET
-VDU19:RET
+VDU19:
+	LD A,(VDU_ARGV)         ;Blue color  byte
+	LD H,A                 
+	LD A,(VDU_ARGV+1)       ;Green Color
+	LD L,A
+	LD A,(VDU_ARGV+2)       ;Red Color
+	RLA
+	RLA
+	RLA
+	OR H					;H=RB L=G  
+	LD A,(VDU_ARGV+3) 	    ;physical color
+	LD E,A
+	LD D,0h
+	LD A,(VDU_ARGV+4) 		;logical color
+	RLA
+	RLA
+	RLA
+	RLA
+	LD IX,PALETTE
+	RL E   ;X BYTES
+	ADD IX,DE
+	RR E
+	OR L	
+	LD (IX),A			    ;loads logical color in the palete and G tree bits
+	LD (IX+1),H				;loads the RB byte
+	CALL _ipalette			;sets the RGB palete register R#E
+	RET
 VDU20:RET
 VDU21:RET
 VDU22: 
