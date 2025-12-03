@@ -169,10 +169,46 @@ _ipalette:
 	ld a,(ix+1)
 	out	(c),a
 	ld a,(ix)      ;red and blue colors
-	and 00001111b
+	and 00001111b  ;cmd line
 	out	(c),a      ;green color
 	ret
-   
+
+_plotSinglePoint:
+	push ix
+	ld ix,StartX
+	call	WAIT_VDP_READY
+	ld	a,36
+	out	(099h),a
+	ld	a,128+17
+	out	(99h),a	;R#17 := 36
+	ld	c,09bh
+	xor a
+	ld hl,(ix+4)
+	ld de,(ix+6)
+	out	(c),l		;end X 
+	out	(c),h
+	out	(c),e		;end Y
+	out	(c),d
+	ld a,(ix+13)		;Color
+	out	(099h),a
+	ld	a,128+44
+	out	(99h),a	        ;R#44 := Color
+	ld a,(ix+14)		;logical op
+	or	01010000b		;cmd pset
+	out	(099h),a
+	ld	a,128+46
+	out	(99h),a	        ;R#44 := Color
+	pop ix
+	ret
+
+
+;changes fore an back color (input aA)
+_chColors:
+    OUT  (VDP_CTRL_PORT), A
+	LD   A, 128+7
+    OUT  (VDP_CTRL_PORT), A
+    RET
+
 WAIT_VDP_READY:
 	
     ld a,2
@@ -225,6 +261,8 @@ WAIT_VDP_READY:
 	
 
 ; ---------MSX ROM BIOS VARS
+	FORCLR 		EQU		0F3E9h 	 	;Foreground color
+	BAKCLR 		EQU 	0F3EAh		;backgroud color
 	CSRXTP		EQU 	0FCB5h		;X CURSOR position in text mode
 	CSRYTP		EQU 	0FCB6h		;Y CURSOR position in text mode
 	MAXCOL		EQU		0FCB1h		;MAX columns in text mode
@@ -264,7 +302,29 @@ WAIT_VDP_READY:
 				DB 11100000b,00111111b
 				DB 11110111b,00111111b
 
-
+;  A : logical color 
+;  returns A: physical color
+_findPhysicalColor:
+	LD B,15
+	RLA
+	RLA
+	RLA
+	RLA
+	AND 11110000B
+	LD E,A
+	LD HL, PALETTE
+_fPC_loop:
+	LD A,(HL)
+	AND 11110000B
+	CP  E
+	jr Z,_fPC_exit_loop
+	INC HL
+	INC HL
+	DJNZ _fPC_loop
+_fPC_exit_loop:
+	LD A,15
+	SUB B
+	RET
 
 ;----------------------------------------------
 	SCROLL_Y_POS: DEFB 00H
@@ -555,7 +615,32 @@ VDU13:
 VDU14:RET
 VDU15:RET
 VDU16:RET
-VDU17:RET
+VDU17:
+	LD A,(VDU_ARGV)         ;Logical foreground color  byte
+	AND 00001111B
+	call _findPhysicalColor
+	LD D, A         ;D holds the index (physical color)
+	LD A,(VDU_ARGV)         ;Logical foreground color  byte
+	AND 11110000B
+	RRA
+	RRA
+	RRA
+	RRA
+	call _findPhysicalColor
+	;A holds the index of (physical color)
+	LD E,A
+	LD  HL,FORCLR
+	LD (HL),D
+	LD HL,BAKCLR
+	LD (HL),E
+	LD A,D
+	RLA 
+	RLA
+	RLA
+	RLA
+	OR E
+	call _chColors
+ 	RET
 VDU18:RET
 VDU19:
 	LD A,(VDU_ARGV)         ;Blue color  byte
@@ -653,8 +738,12 @@ VDU25_DRV:
 	CALL    SCALE_GRAPHIC_POS  ;LOADS DE WITH X POS AND HL WITH Y POS
 	;CHECK PLOT MODE
 	LD A,(VDU_ARGV+4) 		;loads plot mode
-	CP 4
-	JR NC,PLOT_ABSOLUTE
+
+	BIT 6,A 
+	JR NZ,PLOT_POINT
+PLOT_LINE:
+	BIT 2,A 
+	JR NZ,PLOT_ABSOLUTE
 	;PLOT_RELATIVE:
 	; ADD 
 		LD BC,(GRPACYL);	X Graphics Accumulator
@@ -672,7 +761,7 @@ VDU25_DRV:
 	JR Z, DRAW_LINE_BGC
 
 	PLOT_ABSOLUTE:
-	CP 4 					;move relative command
+	CP 4 					;move absolute command
 	JR Z, MOVETO
 	CP 5 					;draw line absolute pos in foreground color
 	JR Z, DRAW_LINE_FGC
@@ -697,6 +786,54 @@ VDU25_DRV:
 		LD (EndY),HL
 		CALL DRAW_LINE_CMD
 	RET
+
+PLOT_POINT:
+	AND 00001111b
+	BIT 2,A 
+	JR NZ,PLOT_POINT_ABSOLUTE
+	;PLOT_RELATIVE:
+	; ADD 
+		LD BC,(GRPACYL);	X Graphics Accumulator
+		ADD HL,BC
+		LD IX, (GRPACXL);
+		ADD IX,DE
+		LD DE,IX
+	CP 0 					;move relative command
+	JR Z, POINT_MOVETO
+	CP 1 					;draw line relative pos in foreground color
+	JR Z, PLOT_POINT_FGC
+	CP 2 					;draw line relative pos in inverse foreground color
+	JR Z, PLOT_POINT_IFG
+	CP 3 					;draw line relative pos in background color
+	JR Z, PLOT_POINT_BGC
+
+	PLOT_POINT_ABSOLUTE:
+	CP 4 					;move absolute command
+	JR Z, POINT_MOVETO
+	CP 5 					;draw line absolute pos in foreground color
+	JR Z, PLOT_POINT_FGC
+	CP 6 					;draw line absolute pos in inverse foreground color
+	JR Z, PLOT_POINT_IFG
+	CP 7 					;draw line absolute pos in background color
+	JR Z, PLOT_POINT_BGC
+	
+	;CMD IMPLEMENTATION
+	POINT_MOVETO:
+		LD (GRPACYL),HL
+		LD (GRPACXL),DE
+		RET
+	PLOT_POINT_FGC:
+	PLOT_POINT_IFG:
+	PLOT_POINT_BGC:
+		LD BC, (GRPACXL)
+		LD (StartX), BC
+		LD BC, (GRPACYL)
+		LD (StartY), BC
+		LD (EndX),DE
+		LD (EndY),HL
+		CALL _plotSinglePoint
+	RET
+
 VDU26:RET
 VDU27:RET
 VDU28:RET
