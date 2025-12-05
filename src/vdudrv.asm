@@ -268,10 +268,9 @@ WAIT_VDP_READY:
 	MAXCOL		EQU		0FCB1h		;MAX columns in text mode
 	MAXROW		EQU 	0FCB0h		;MAX rows in text mode
     GXPOSH      EQU     0FCB3h 	 	;2 	X-position of graphic cursor
-    GYPOSH      EQU     0FCB5h 	 	;2 	Y-position of graphic cursor
-    GRPACXL     EQU     0FCB7h 	 	;2 	X Graphics Accumulator
-    GRPACYL   	EQU     0FCB9h 	 	;H  Y Graphics Accumulator  	
-    GRPACYH     EQU     0FCBAh      ;L  Y Graphics Accumulator  
+    GYPOSH		EQU     0FCB5h 	 	;2 	Y-position of graphic cursor
+    GRPACX      EQU     0FCB7h 	 	;2 	X Graphics Accumulator
+    GRPACY   	EQU     0FCB9h 	 	;2  Y Graphics Accumulator  
     SCRMOD      EQU     0FCAFh      ; Current Screen mode
 ;----------Graphic Viewport variables----------
 	VDU_GVOX:	DEFW 0000H	
@@ -746,11 +745,13 @@ PLOT_LINE:
 	JR NZ,PLOT_ABSOLUTE
 	;PLOT_RELATIVE:
 	; ADD 
-		LD BC,(GRPACYL);	X Graphics Accumulator
+		LD BC,(GRPACY);	X Graphics Accumulator
 		ADD HL,BC
-		LD IX, (GRPACXL);
+		LD IX, (GRPACX);
 		ADD IX,DE
 		LD DE,IX
+	PLOT_ABSOLUTE:
+	AND 00000011B
 	CP 0 					;move relative command
 	JR Z, MOVETO
 	CP 1 					;draw line relative pos in foreground color
@@ -759,47 +760,49 @@ PLOT_LINE:
 	JR Z, DRAW_LINE_IFG
 	CP 3 					;draw line relative pos in background color
 	JR Z, DRAW_LINE_BGC
-
-	PLOT_ABSOLUTE:
-	CP 4 					;move absolute command
-	JR Z, MOVETO
-	CP 5 					;draw line absolute pos in foreground color
-	JR Z, DRAW_LINE_FGC
-	CP 6 					;draw line absolute pos in inverse foreground color
-	JR Z, DRAW_LINE_IFG
-	CP 7 					;draw line absolute pos in background color
-	JR Z, DRAW_LINE_BGC
 	
 	;CMD IMPLEMENTATION
 	MOVETO:
-		LD (GRPACYL),HL
-		LD (GRPACXL),DE
+		LD BC, (GRPACX)
+		LD (GXPOSH), BC
+		LD BC, (GRPACY)    ;use GXPOSH to store last pos before the new pos...
+		LD (GYPOSH), BC	   ;not sure if this system variable is used for this purpose
+		;store graphic cursor pos in the grpac
+		LD (GRPACY),HL
+		LD (GRPACX),DE
 		RET
 	DRAW_LINE_FGC:
 	DRAW_LINE_IFG:
 	DRAW_LINE_BGC:
-		LD BC, (GRPACXL)
+		LD BC, (GRPACX)
 		LD (StartX), BC
-		LD BC, (GRPACYL)
+		LD BC, (GRPACY)
 		LD (StartY), BC
 		LD (EndX),DE
 		LD (EndY),HL
 		CALL DRAW_LINE_CMD
-	RET
-
+		LD HL,(EndX)
+		LD (GRPACX),HL    ;move to the last point
+		LD HL,(EndY)
+		LD (GRPACY),HL
+		RET
 PLOT_POINT:
+	BIT 4,A     ;(BIT 6 AND 4 )
+	JR NZ,PLOT_TRIANGLE
 	AND 00001111b
 	BIT 2,A 
 	JR NZ,PLOT_POINT_ABSOLUTE
 	;PLOT_RELATIVE:
 	; ADD 
-		LD BC,(GRPACYL);	X Graphics Accumulator
+		LD BC,(GRPACY);	X Graphics Accumulator
 		ADD HL,BC
-		LD IX, (GRPACXL);
+		LD IX, (GRPACX);
 		ADD IX,DE
 		LD DE,IX
+	PLOT_POINT_ABSOLUTE:
+	AND 00000011b
 	CP 0 					;move relative command
-	JR Z, POINT_MOVETO
+	JR Z, MOVETO
 	CP 1 					;draw line relative pos in foreground color
 	JR Z, PLOT_POINT_FGC
 	CP 2 					;draw line relative pos in inverse foreground color
@@ -807,32 +810,74 @@ PLOT_POINT:
 	CP 3 					;draw line relative pos in background color
 	JR Z, PLOT_POINT_BGC
 
-	PLOT_POINT_ABSOLUTE:
-	CP 4 					;move absolute command
-	JR Z, POINT_MOVETO
-	CP 5 					;draw line absolute pos in foreground color
-	JR Z, PLOT_POINT_FGC
-	CP 6 					;draw line absolute pos in inverse foreground color
-	JR Z, PLOT_POINT_IFG
-	CP 7 					;draw line absolute pos in background color
-	JR Z, PLOT_POINT_BGC
 	
 	;CMD IMPLEMENTATION
-	POINT_MOVETO:
-		LD (GRPACYL),HL
-		LD (GRPACXL),DE
-		RET
 	PLOT_POINT_FGC:
 	PLOT_POINT_IFG:
 	PLOT_POINT_BGC:
-		LD BC, (GRPACXL)
+		LD BC, (GRPACX)
 		LD (StartX), BC
-		LD BC, (GRPACYL)
+		LD BC, (GRPACY)
 		LD (StartY), BC
 		LD (EndX),DE
 		LD (EndY),HL
 		CALL _plotSinglePoint
 	RET
+
+PLOT_TRIANGLE:
+	AND 00001111b
+	BIT 2,A 
+	JR NZ,PLOT_TRIANGLE_ABSOLUTE
+	;PLOT_RELATIVE:
+	; ADD 
+		LD BC,(GRPACY);	X Graphics Accumulator
+		ADD HL,BC
+		LD IX, (GRPACX);
+		ADD IX,DE
+		LD DE,IX
+	PLOT_TRIANGLE_ABSOLUTE:
+	AND 00000011b
+	CP 0 					;move relative command
+	JP Z, MOVETO
+	CP 1 					;draw line relative pos in foreground color
+	JR Z, PLOT_TRIANGLE_FGC
+	CP 2 					;draw line relative pos in inverse foreground color
+	JR Z, PLOT_TRIANGLE_IFG
+	CP 3 					;draw line relative pos in background color
+	JR Z, PLOT_TRIANGLE_BGC
+	;CMD IMPLEMENTATION
+	PLOT_TRIANGLE_FGC:
+	PLOT_TRIANGLE_IFG:
+	PLOT_TRIANGLE_BGC:
+		LD BC, (GXPOSH)    ;desde 1er punto
+		LD (StartX), BC
+		LD BC, (GYPOSH)
+		LD (StartY), BC
+		LD (EndX),DE		;hasta tercero
+		LD (EndY),HL
+		CALL DRAW_LINE_CMD
+		LD BC, (EndX)		;desde tercero
+		LD (StartX), BC
+		LD BC, (EndY)
+		LD (StartY), BC
+		LD BC,(GRPACX)      ;hasta segundo
+		LD (EndX),BC
+		LD BC,(GRPACY)
+		LD (EndY),BC
+		CALL DRAW_LINE_CMD
+		LD BC, (EndX)		;desde segundo
+		LD (StartX), BC	
+		LD BC, (EndY)
+		LD (StartY), BC
+		LD BC,(GXPOSH)      ;hasta primero
+		LD (EndX),BC
+		LD BC,(GYPOSH)
+		LD (EndY),BC
+		CALL DRAW_LINE_CMD
+
+		RET
+
+
 
 VDU26:RET
 VDU27:RET
@@ -903,7 +948,7 @@ GOSWRCH:
 	LD     IX, GRPPRT
 	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
 	CALL   CALSLT    
-	LD A,(GRPACYL)
+	LD A,(GRPACY)
 	CP 208
 	CALL NC,VSCROLL    
 	JR EXIT_GOSWRCH
@@ -935,7 +980,7 @@ VSCROLL:
 	LD  H,97H  ;R23 CON BIT 7 A 1 PARA ESCRIBIR
 	CALL WRITE_VDP
 	LD A,0
-	LD (GRPACYL), A
+	LD (GRPACY), A
 	RET
 
 
@@ -1323,7 +1368,7 @@ PCSR:
 	CALL SCALE_TEXT_POS ; DE has now scaled to graphic position;
 						; C=1 for X>256
 	
-	LD  HL, GRPACYH
+	LD  HL, GRPACY+1
 	LD (HL), 0  ;accumulator Y coordenadas gráficas H
 	dec HL
 	LD (HL), E  ;accumulator Y coordenadas gráficas L
