@@ -132,14 +132,26 @@ _iline:
 	ld hl,(ix)
 	ld de,(ix+2)
 	out	(c),l		;X from
+	ld a,h
+	AND 00000001b
+	ld h,a
 	out	(c),h
 	out	(c),e		;Y from
+	ld a,e
+	AND 00000011b
+	ld e,a
 	out	(c),d
 	ld hl,(ix+8)	;Maj
 	ld de,(ix+10)	;Min
 	out	(c),l		;Maj side
+	ld a,h
+	AND 00000011b
+	ld h,a
 	out	(c),h
 	out	(c),e		;Min side
+	ld a,e
+	AND 00000001b
+	ld e,a
 	out	(c),d
 	ld a,(ix+13)		;Color
 	out	(c),a
@@ -245,7 +257,7 @@ WAIT_VDP_READY:
     EXTERN  FPP       ;for Math subrutines operation
 
 ; ---------MSX ROM BIOS SUBRUTINES
-    EXPTBL      EQU 	0FCC1H      ;ROM BIOS SLOT
+    EXPTBL      EQU 	0FCC1h      ;ROM BIOS SLOT
     CHGMOD      EQU     005Fh       ;change screen mode A
                                     ;Input    : A  - SCREEN mode 
     CALSLT      EQU     001Ch       ;Call inter-slot rom subrutine in IX
@@ -255,9 +267,10 @@ WAIT_VDP_READY:
                                     ;Input    : A  - ASCII code of character to display
     CHGET       EQU     009Fh       ;Function : One character input (waiting)
                                     ;Output   : A  - ASCII code of the input character 
-	POSIT		EQU  	00C6H		;Function: 	Moves the cursor
+	POSIT		EQU  	00C6h		;Function: 	Moves the cursor
 									;Input: 	H = X-coordinate of the cursor, L for the Y-coordinate
 									;Output: 	None
+
 	
 
 ; ---------MSX ROM BIOS VARS
@@ -272,6 +285,7 @@ WAIT_VDP_READY:
     GRPACX      EQU     0FCB7h 	 	;2 	X Graphics Accumulator
     GRPACY   	EQU     0FCB9h 	 	;2  Y Graphics Accumulator  
     SCRMOD      EQU     0FCAFh      ; Current Screen mode
+	LINL40		EQU		0F3AEh
 ;----------Graphic Viewport variables----------
 	VDU_GVOX:	DEFW 0000H	
 	VDU_GVOY:	DEFW 0000H
@@ -336,7 +350,7 @@ _fPC_exit_loop:
 	;PUBLIC	GETCSR      implemented in dist.asm
 	;PUBLIC	PUTIME      implemented in dist.asm
 	EXTERN	GETIME      ;implemented in dist.asm
-	;PUBLIC	OSKEY       implemented in dist.asm
+	;PUBLIC	OSKEY       implemented in cmos.asm
 ;
 	PUBLIC	CLG
 	PUBLIC	MOVE
@@ -640,7 +654,45 @@ VDU17:
 	OR E
 	call _chColors
  	RET
-VDU18:RET
+VDU18:
+	;Name 	Operation 							LO3 LO2 LO1 LO0
+	;IMP 	DC=SC 								0 	0 	0 	0
+	;AND 	SC*DC 								0 	0 	0 	1
+	;OR 	SC+DC 								0 	0 	1 	0
+	;EOR 	SC*DC+SC*DC 						0 	0 	1 	1
+	;NOT 	DC=SC 								0 	1 	0 	0
+	;--- 										0 	1 	0 	1
+	;--- 										0 	1 	1 	0
+	;--- 										0 	1 	1 	1
+	;TIMP 	if SC=0 then DC=DC else DC=SC 		1 	0 	0 	0
+	;TAND 	if SC=0 then DC=DC else SC*DC 		1 	0 	0 	1
+	;TOR 	if SC=0 then DC=DC else SC+DC 		1 	0 	1 	0
+	;TEOR 	if SC=0 then DC=DC else SC*DC+SC*DC 1 	0 	1 	1
+	;TNOT 	if SC=0 then DC=DC else DC=SC 		1 	1 	0 	0
+	;--- 										1 	1 	0 	1
+	;--- 										1 	1 	1 	0
+	;--- 										1 	1 	1 	1
+	;Plot mode:
+	;0	Plot	The specified color overwrites the existing color (default).
+	;1	OR	The specified color is bitwise ORed with the color that is already there.
+	;2	AND	The specified color is bitwise ANDed with the color that is already there.
+	;3	EOR	The specified color is Exclusive-ORed (XORed) with the existing color. This mode is often used for animation as drawing the same shape twice restores the original background.
+	;4	Invert	The existing color is inverted, and the colour parameter is ignored.
+	LD 	A,(VDU_ARGV+1)       ;Logical operation
+	Ld  IX,Color
+	LD 	(IX+1),A
+	LD	DE, SCRMOD   
+	LD	A, (DE)           ;A = display mode
+	CP	8
+	JR	Z, COLOR_256 ;no palette in 256 mode
+	LD A,(VDU_ARGV)          ;Logical foreground color  byte
+	call _findPhysicalColor
+	LD (IX),A
+	RET
+	COLOR_256:
+	LD A,(VDU_ARGV)          ;Logical foreground color  byte
+	LD (IX),A
+ 	RET
 VDU19:
 	LD A,(VDU_ARGV)         ;Blue color  byte
 	LD H,A                 
@@ -683,12 +735,20 @@ VDU22:
 		LD     (VDU_GVOX),HL
 		LD     (VDU_GVOY),HL
 		;SCALE VIEWPORT WIDTH AND HEIGHT DEPENDING ON SCREEN MODE
-		CP     2;
+		CP	   0
+		JR     Z, MODE_TEXT_1
+		CP     1;
+		JR     Z, MODE_TEXT_2
+		CP     2
 		JR     Z, SET_VIEWPORT_LR
 		CP     6;
 		JR     Z, SET_VIEWPORT_HR
 		CP     7;
 		JR     Z, SET_VIEWPORT_HR
+		CP     9;
+		JR     Z, MODE_GRAP_1   ;IT IS BE MODE 1
+
+
 
 	SET_VIEWPORT_MR:
 		LD     HL,256
@@ -709,6 +769,24 @@ VDU22:
 		LD     (VDU_GVXW), HL
 		LD     HL,212
 		LD     (VDU_GVXH), HL
+		JR CALL_CHMOD
+	MODE_TEXT_1:
+	    ; La variable de sistema LINLEN (#F3EBH) almacena el número de columnas actual.
+        LD      HL,LINL40   ; Dirección de la variable de sistema LINLEN
+        LD      (HL),40    ; Establecer el valor de 80 columnas
+		jr CALL_CHMOD			
+	MODE_TEXT_2:
+	    ; La variable de sistema LINLEN (#F3EBH) almacena el número de columnas actual.
+        LD      HL,LINL40   ; Dirección de la variable de sistema LINLEN
+        LD      (HL),80    ; Establecer el valor de 80 columnas
+		XOR A
+		jr CALL_CHMOD
+	MODE_GRAP_1:
+	    ; La variable de sistema LINLEN (#F3EBH) almacena el número de columnas actual.
+		AND 00000111b
+        LD      HL,LINL40   ; Dirección de la variable de sistema LINLEN
+        LD      (HL),32     ; Establecer el valor de 80 columnas
+			
 	CALL_CHMOD:
 		LD     IY,(EXPTBL-1)       ;BIOS slot in iy
 		LD     IX, CHGMOD    
@@ -718,6 +796,7 @@ VDU22:
 VDU23:RET
 VDU24:RET
 VDU25_DRV:
+
 	;0 	Move relative to the last point.
 	;1 	Draw a line, in the current graphics foreground colour, relative to the last point.
 	;2 	Draw a line, in the logical inverse colour, relative to the last point.
@@ -745,11 +824,15 @@ PLOT_LINE:
 	JR NZ,PLOT_ABSOLUTE
 	;PLOT_RELATIVE:
 	; ADD 
-		LD BC,(GRPACY);	X Graphics Accumulator
+		LD BC,(VDU_GVXH)	;VIWEPORT HEIGTH
+		DEC BC
+		SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
+		LD BC,(GRPACY);	Y Graphics Accumulator
 		ADD HL,BC
 		LD IX, (GRPACX);
 		ADD IX,DE
-		LD DE,IX
+		PUSH IX
+		POP DE
 	PLOT_ABSOLUTE:
 	AND 00000011B
 	CP 0 					;move relative command
@@ -794,11 +877,15 @@ PLOT_POINT:
 	JR NZ,PLOT_POINT_ABSOLUTE
 	;PLOT_RELATIVE:
 	; ADD 
-		LD BC,(GRPACY);	X Graphics Accumulator
+		LD BC,(VDU_GVXH)	;VIWEPORT HEIGTH
+		DEC BC
+		SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
+		LD BC,(GRPACY);	Y Graphics Accumulator
 		ADD HL,BC
 		LD IX, (GRPACX);
 		ADD IX,DE
-		LD DE,IX
+		PUSH IX
+		POP DE
 	PLOT_POINT_ABSOLUTE:
 	AND 00000011b
 	CP 0 					;move relative command
@@ -830,11 +917,15 @@ PLOT_TRIANGLE:
 	JR NZ,PLOT_TRIANGLE_ABSOLUTE
 	;PLOT_RELATIVE:
 	; ADD 
-		LD BC,(GRPACY);	X Graphics Accumulator
+		LD BC,(VDU_GVXH)	;VIWEPORT HEIGTH
+		DEC BC
+		SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
+		LD BC,(GRPACY);	Y Graphics Accumulator
 		ADD HL,BC
 		LD IX, (GRPACX);
 		ADD IX,DE
-		LD DE,IX
+		PUSH IX
+		POP DE
 	PLOT_TRIANGLE_ABSOLUTE:
 	AND 00000011b
 	CP 0 					;move relative command
@@ -1346,7 +1437,7 @@ DIVIDE_BY_1024:
     LD 		A,(VDU_GVXH)					  
 	DEC 	A                 
 	SUB 	L				  
-	LD 		L,A 		  ; HL contiene Y escalado e invertido
+	LD 		L,A 		  ; HL contiene Y escalado e invertido, H siempre es 0
     POP     DE            ; carga X escalado 
     POP     BC
     POP     AF
@@ -1359,6 +1450,8 @@ DIVIDE_BY_1024:
 ; 	  Destroys: A,D,E,H,L,F
 ;
 PCSR:
+	PUSH IX
+	PUSH IY
 	LD A,E
 	LD (CSRXTP),A
 	LD A,L	
@@ -1367,7 +1460,6 @@ PCSR:
 	LD L,E
 	CALL SCALE_TEXT_POS ; DE has now scaled to graphic position;
 						; C=1 for X>256
-	
 	LD  HL, GRPACY+1
 	LD (HL), 0  ;accumulator Y coordenadas gráficas H
 	dec HL
@@ -1389,40 +1481,13 @@ PCSR_CARRY:
 	dec  HL     ;
 	LD (HL), 0  ; 0fCB4   ;no se para que sirve
 	dec HL
-	LD (HL), 0  ; 0fCB3   ;no se para que sirve
+	LD (HL), 0  ; 0fCB3   ;no se para que sirve	
+	POP IY
+	POP IX
 	RET
 	
 
 
-; 3. Imprimir el string
-;	Input     DE: byte string ended by "0"
-PRINT_STRING:
-
-	LD     A, (DE)  ; loads first char in the string ended by null (0)
-	CP     0
-	JR     Z, EXIT_PRINT
-	PUSH   DE
-	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
-	LD     DE, SCRMOD   
-	EX     AF,AF'
-	LD     A, (DE)      ; A = display mode
-	CP     0
-	JR     Z,PS1
-	EX     AF,AF'
-	LD     IX, GRPPRT
-	CALL   CALSLT        
-	JR PS2
-PS1:
-	EX     AF,AF'
-	LD     IX, CHPUT     ; print one char in text mode 
-	CALL   CALSLT        ; call interslot subrutine
-PS2:
-	POP    DE
-	INC    DE
-	JR     PRINT_STRING
-EXIT_PRINT:
-	POP BC
-	RET
 
 ;--------------------------------------VDU OPERATIONS--------------------------------------
 
