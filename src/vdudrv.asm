@@ -124,9 +124,9 @@ _iline:
          
 	call	WAIT_VDP_READY
 	ld	a,36
-	out	(099h),a
+	out	(VDP_CTRL_PORT),a
 	ld	a,128+17
-	out	(99h),a	;R#17 := 36
+	out	(VDP_CTRL_PORT),a	;R#17 := 36
 	ld	c,09bh
 	xor a
 	ld hl,(ix)
@@ -169,9 +169,9 @@ _iline:
 _ipalette:    
 	;call	WAIT_VDP_READY i think we dont need that
 	ld	a,E
-	out	(099h),a
+	out	(VDP_CTRL_PORT),a
 	ld	a,128+16
-	out	(99h),a	   ;R#16 := pysical 
+	out	(VDP_CTRL_PORT),a	   ;R#16 := pysical 
 	ld	c,09bh
 	xor a
 	ld ix,PALETTE
@@ -190,9 +190,9 @@ _plotSinglePoint:
 	ld ix,StartX
 	call	WAIT_VDP_READY
 	ld	a,36
-	out	(099h),a
+	out	(VDP_CTRL_PORT),a
 	ld	a,128+17
-	out	(99h),a	;R#17 := 36
+	out	(VDP_CTRL_PORT),a	;R#17 := 36
 	ld	c,09bh
 	xor a
 	ld hl,(ix+4)
@@ -202,14 +202,14 @@ _plotSinglePoint:
 	out	(c),e		;end Y
 	out	(c),d
 	ld a,(ix+13)		;Color
-	out	(099h),a
+	out	(VDP_CTRL_PORT),a
 	ld	a,128+44
-	out	(99h),a	        ;R#44 := Color
+	out	(VDP_CTRL_PORT),a	        ;R#44 := Color
 	ld a,(ix+14)		;logical op
 	or	01010000b		;cmd pset
-	out	(099h),a
+	out	(VDP_CTRL_PORT),a
 	ld	a,128+46
-	out	(99h),a	        ;R#44 := Color
+	out	(VDP_CTRL_PORT),a	        ;R#44 := Color
 	pop ix
 	ret
 
@@ -261,6 +261,7 @@ WAIT_VDP_READY:
     CHGMOD      EQU     005Fh       ;change screen mode A
                                     ;Input    : A  - SCREEN mode 
     CALSLT      EQU     001Ch       ;Call inter-slot rom subrutine in IX
+	CHGCLR      EQU		0062h		;change color
     GRPPRT      EQU     008Dh       ;Function : Displays a character on the graphic screen
                                     ;Input    : A  - ASCII value of the character to print 
     CHPUT       EQU     00A2h       ;Function : Displays one character
@@ -276,6 +277,7 @@ WAIT_VDP_READY:
 ; ---------MSX ROM BIOS VARS
 	FORCLR 		EQU		0F3E9h 	 	;Foreground color
 	BAKCLR 		EQU 	0F3EAh		;backgroud color
+	BDRCLR 	 	EQU		0F3EBh 	 	;Border color
 	CSRXTP		EQU 	0FCB5h		;X CURSOR position in text mode
 	CSRYTP		EQU 	0FCB6h		;Y CURSOR position in text mode
 	MAXCOL		EQU		0FCB1h		;MAX columns in text mode
@@ -870,6 +872,8 @@ PLOT_LINE:
 		LD (GRPACY),HL
 		RET
 PLOT_POINT:
+	BIT 5,A 	;(BIT 6 AND 5 )
+	JP NZ,PLOT_RECTANGLE
 	BIT 4,A     ;(BIT 6 AND 4 )
 	JR NZ,PLOT_TRIANGLE
 	AND 00001111b
@@ -966,6 +970,75 @@ PLOT_TRIANGLE:
 		LD (EndY),BC
 		CALL DRAW_LINE_CMD
 
+		RET
+
+
+PLOT_RECTANGLE:
+	BIT 2,A 
+	JR NZ,PLOT_RECTANGLE_ABSOLUTE
+	;PLOT_RELATIVE:
+	; ADD 
+		LD BC,(VDU_GVXH)	;VIWEPORT HEIGTH
+		DEC BC
+		SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
+		LD BC,(GRPACY);	Y Graphics Accumulator
+		ADD HL,BC
+		LD IX, (GRPACX);
+		ADD IX,DE
+		PUSH IX
+		POP DE
+	PLOT_RECTANGLE_ABSOLUTE:
+	AND 00000011b
+	CP 0 					;move relative command
+	JP Z, MOVETO
+	CP 1 					;draw line relative pos in foreground color
+	JR Z, PLOT_RECTANGLE_FGC
+	CP 2 					;draw line relative pos in inverse foreground color
+	JR Z, PLOT_RECTANGLE_IFG
+	CP 3 					;draw line relative pos in background color
+	JR Z, PLOT_RECTANGLE_BGC
+	;CMD IMPLEMENTATION
+	PLOT_RECTANGLE_FGC:
+	PLOT_RECTANGLE_IFG:
+	PLOT_RECTANGLE_BGC:	
+		LD BC,(GRPACY)
+		LD (StartY),BC
+		LD (EndY),HL
+		LD BC,(GRPACX)      ;DESDE PUNTO ANTERIOR
+		LD (StartX),BC
+		LD (EndX),BC	
+		PUSH HL
+		PUSH DE
+		CALL DRAW_LINE_CMD
+		POP DE
+		POP HL
+		LD (StartY),HL
+		LD BC,(GRPACX) 
+		LD (StartX),BC
+		LD (EndX),DE		
+		LD (EndY),HL
+		PUSH HL
+		PUSH DE
+		CALL DRAW_LINE_CMD
+		POP DE
+		POP HL
+		LD (StartY),HL
+		LD (StartX),DE
+		LD BC,(GRPACY)
+		LD (EndY),BC
+		LD (EndX),DE
+		PUSH HL
+		PUSH DE
+		CALL DRAW_LINE_CMD
+		POP DE
+		POP HL
+		LD BC,(GRPACY)
+		LD (StartY),BC
+		LD (StartX),DE
+		LD (EndY),BC
+		LD BC,(GRPACX)      ;HASTA PUNTO ANTERIOR
+		LD (EndX),BC
+		CALL DRAW_LINE_CMD
 		RET
 
 
@@ -1343,7 +1416,8 @@ SCALE_TEXT_POS:
     SLA A           ; A = Columna * 2
     ADD A, L        ; A = Columna * 3
     SLA A           ; A = Columna * 6  Carry bit one needed for High Res modes
-    LD D, A         ; D = Coordenada X
+	LD D, A         ; D = Coordenada X
+	
     RET				; 
 
 IS_32_COLUMNS:
@@ -1370,6 +1444,8 @@ IS_TXT_MODE:
     LD A, H     ; Guarda el contenido de H en A
     LD H, L     ; Mueve el contenido de L a H
     LD L, A     ; Mueve el contenido de A (que era H) a L
+	INC H       ; IN MSX 1 IS POINT 0,0 IS 1,1
+	INC L
     PUSH HL
     LD	IX, POSIT             ;address of posit BIOS routine
 	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
