@@ -64,6 +64,7 @@ Min:		DW 100  ;10
 lineFlags:	DB 0    ;12
 Color:		DB 0    ;13
 LogOp:		DB 0    ;14
+vdp_cmd:		DB 0	;15
 
 
 
@@ -121,7 +122,7 @@ _positive_up_flag:
 
 _hl_geq_de:
 _iline:
-         
+
 	call	WAIT_VDP_READY
 	ld	a,36
 	out	(VDP_CTRL_PORT),a
@@ -131,35 +132,24 @@ _iline:
 	xor a
 	ld hl,(ix)
 	ld de,(ix+2)
-	out	(c),l		;X from
-	ld a,h
-	AND 00000001b
-	ld h,a
-	out	(c),h
-	out	(c),e		;Y from
-	ld a,e
-	AND 00000011b
-	ld e,a
-	out	(c),d
-	ld hl,(ix+8)	;Maj
-	ld de,(ix+10)	;Min
-	out	(c),l		;Maj side
-	ld a,h
-	AND 00000011b
-	ld h,a
-	out	(c),h
-	out	(c),e		;Min side
-	ld a,e
-	AND 00000001b
-	ld e,a
-	out	(c),d
-	ld a,(ix+13)		;Color
-	out	(c),a
-	ld a,(ix+12)		;Flags
-	out	(c),a
-	ld a,(ix+14)		;logical op
-	or	01110000b
-	out	(c),a
+	out	(c),l		;X from R#36
+	out	(c),h		;       R#37
+	out	(c),e		;Y from R#38
+	out	(c),d		;       R#39
+	ld hl,(ix+8)	;Maj    
+	ld de,(ix+10)	;Min    
+	out	(c),l		;Majsid R#40
+	out	(c),h		;       R#41
+	out	(c),e		;Minsid R#42
+	out	(c),d       ;       R#43
+	ld a,(ix+13)    ;Color
+	out	(c),a		;       R#44   
+	ld a,(ix+12)	;Flags
+	out	(c),a       ;       R#45
+	ld a,(ix+14)	;logop  
+	ld l,(ix+15)	;vdp command
+	or l
+	out	(c),a		;       R#46
 	pop ix
 	ret
 
@@ -818,24 +808,30 @@ VDU25_DRV:
 	CALL    SCALE_GRAPHIC_POS  ;LOADS DE WITH X POS AND HL WITH Y POS
 	;CHECK PLOT MODE
 	LD A,(VDU_ARGV+4) 		;loads plot mode
-
-	BIT 6,A 
-	JR NZ,PLOT_POINT
-PLOT_LINE:
+	;CHECKS AND CALCULATES PLOT ABSOLUTE/RELATIVE
 	BIT 2,A 
 	JR NZ,PLOT_ABSOLUTE
-	;PLOT_RELATIVE:
-	; ADD 
-		LD BC,(VDU_GVXH)	;VIWEPORT HEIGTH
-		DEC BC
-		SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
+;PLOT_RELATIVE:
+		;SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
 		LD BC,(GRPACY);	Y Graphics Accumulator
 		ADD HL,BC
 		LD IX, (GRPACX);
 		ADD IX,DE
 		PUSH IX
 		POP DE
-	PLOT_ABSOLUTE:
+		JR DO_NOT_NEED_INVERT
+PLOT_ABSOLUTE:
+    LD 		A,(VDU_GVXH)					  
+	DEC 	A                 
+	SUB 	L				  
+	LD 		L,A 		  ; HL contiene Y escalado e invertido, H siempre es 0
+	LD A,(VDU_ARGV+4) 		;loads plot mode AGAIN
+DO_NOT_NEED_INVERT:
+	BIT 6,A 
+	JR NZ,PLOT_POINT
+PLOT_LINE:
+	LD IY,vdp_cmd
+	LD (IY),01110000b
 	AND 00000011B
 	CP 0 					;move relative command
 	JR Z, MOVETO
@@ -876,21 +872,6 @@ PLOT_POINT:
 	JP NZ,PLOT_RECTANGLE
 	BIT 4,A     ;(BIT 6 AND 4 )
 	JR NZ,PLOT_TRIANGLE
-	AND 00001111b
-	BIT 2,A 
-	JR NZ,PLOT_POINT_ABSOLUTE
-	;PLOT_RELATIVE:
-	; ADD 
-		LD BC,(VDU_GVXH)	;VIWEPORT HEIGTH
-		DEC BC
-		SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
-		LD BC,(GRPACY);	Y Graphics Accumulator
-		ADD HL,BC
-		LD IX, (GRPACX);
-		ADD IX,DE
-		PUSH IX
-		POP DE
-	PLOT_POINT_ABSOLUTE:
 	AND 00000011b
 	CP 0 					;move relative command
 	JR Z, MOVETO
@@ -916,21 +897,8 @@ PLOT_POINT:
 	RET
 
 PLOT_TRIANGLE:
-	AND 00001111b
-	BIT 2,A 
-	JR NZ,PLOT_TRIANGLE_ABSOLUTE
-	;PLOT_RELATIVE:
-	; ADD 
-		LD BC,(VDU_GVXH)	;VIWEPORT HEIGTH
-		DEC BC
-		SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
-		LD BC,(GRPACY);	Y Graphics Accumulator
-		ADD HL,BC
-		LD IX, (GRPACX);
-		ADD IX,DE
-		PUSH IX
-		POP DE
-	PLOT_TRIANGLE_ABSOLUTE:
+	LD IY,vdp_cmd
+	LD (IY),01110000b    ;line cmd
 	AND 00000011b
 	CP 0 					;move relative command
 	JP Z, MOVETO
@@ -974,31 +942,29 @@ PLOT_TRIANGLE:
 
 
 PLOT_RECTANGLE:
-	BIT 2,A 
-	JR NZ,PLOT_RECTANGLE_ABSOLUTE
-	;PLOT_RELATIVE:
-	; ADD 
-		LD BC,(VDU_GVXH)	;VIWEPORT HEIGTH
-		DEC BC
-		SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
-		LD BC,(GRPACY);	Y Graphics Accumulator
-		ADD HL,BC
-		LD IX, (GRPACX);
-		ADD IX,DE
-		PUSH IX
-		POP DE
-	PLOT_RECTANGLE_ABSOLUTE:
+	LD IY,vdp_cmd
+	LD (IY),01110000b    ;line cmd
 	AND 00000011b
 	CP 0 					;move relative command
 	JP Z, MOVETO
-	CP 1 					;draw line relative pos in foreground color
+	CP 1 					;draw rectangle at pos in foreground color
 	JR Z, PLOT_RECTANGLE_FGC
-	CP 2 					;draw line relative pos in inverse foreground color
+	CP 2 					;draw rectangle at pos in inverse foreground color
 	JR Z, PLOT_RECTANGLE_IFG
-	CP 3 					;draw line relative pos in background color
+	CP 3 					;draw rectangle at pos in background color
 	JR Z, PLOT_RECTANGLE_BGC
 	;CMD IMPLEMENTATION
 	PLOT_RECTANGLE_FGC:
+		LD IY,vdp_cmd
+		LD (IY),10000000b    ;line cmd
+		LD BC, (GRPACX)
+		LD (StartX), BC
+		LD BC, (GRPACY)
+		LD (StartY), BC
+		LD (EndX),DE
+		LD (EndY),HL
+		CALL DRAW_LINE_CMD
+		RET
 	PLOT_RECTANGLE_IFG:
 	PLOT_RECTANGLE_BGC:	
 		LD BC,(GRPACY)
@@ -1058,6 +1024,10 @@ VDU29:
 	LD E,A                 ;DE HAS X COORD
 	;SCALE
     CALL    SCALE_GRAPHIC_POS
+    LD 		A,(VDU_GVXH)					  
+	DEC 	A                 
+	SUB 	L				  
+	LD 		L,A 		  ; HL contiene Y escalado e invertido, H siempre es 0
 	;LOADS SCALED COORD TO VDU_GVOX AND VDU_GVOY
 	LD A,E
 	LD (VDU_GVOX),A 		;LOW BYTE GRAPHIC ORIGIN X
@@ -1470,10 +1440,22 @@ SCALE_GRAPHIC_POS:
     ;
 
     LD      HL, (VDU_GVXW); Carga el primer entero en el registro HL
-    EXX                   ; Cambia a los registros alternos HL' tiene el ancho del viewport     
+
+	BIT 	7,D
+	JR      NZ,DE_IS_NEGATIVE
+	EXX
+	LD      DE, 0000H  
+	JR 		DE_IS_POSITIVE ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
+                 ; Cambia a los registros alternos HL' tiene el ancho del viewport     
                           ; DE' contiene la porsicion x
-    LD      HL, 0         ; Pone a cero HL (bits 31 al 16 del nº entero de 32 bits)
-    LD      DE, 0         ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
+DE_IS_NEGATIVE:
+    EXX  
+	LD 		DE, 0FFFFH
+DE_IS_POSITIVE:	
+	;si es negativo debería poner a  ffff los bytes altos!
+	;LD 		DE,FFFFh
+
+	LD      HL, 0000H         ; Pone a cero HL (bits 31 al 16 del nº entero de 32 bits)
     LD      BC,0          ; exponente tiene que ser 0 en ambos numeros	
     LD	    A,10
     CALL    FPP		  ;MULTIPLY          ; HLH'L' contiene la multiplicacion
@@ -1495,8 +1477,15 @@ SCALE_1024_TO_VIEPORT_HEIGHT:
     POP     HL            ; HL es la coordenada y de nuevo
     PUSH    DE                  
     LD      DE, (VDU_GVXH); Carga el alto del view port
+	BIT 	7,H
+	JR      NZ,HL_IS_NEGATIVE
+	EXX
+	LD      HL, 0000H  
+	JR 		HL_IS_POSITIVE ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
+HL_IS_NEGATIVE:
     EXX
-    LD      HL,0
+	LD 		HL, 0FFFFH
+HL_IS_POSITIVE:	
     LD      DE,0
     LD	    A,10
     CALL    FPP		      ;MULTIPLY
@@ -1510,10 +1499,6 @@ DIVIDE_BY_1024:
     LD      A,1
     CALL    FPP		      ;IBDIV  after the mul and div the number is 16 bits
     EXX
-    LD 		A,(VDU_GVXH)					  
-	DEC 	A                 
-	SUB 	L				  
-	LD 		L,A 		  ; HL contiene Y escalado e invertido, H siempre es 0
     POP     DE            ; carga X escalado 
     POP     BC
     POP     AF
