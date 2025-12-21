@@ -813,6 +813,13 @@ VDU25_DRV:
 	JR NZ,PLOT_ABSOLUTE
 ;PLOT_RELATIVE:
 		;SBC HL,BC           ;HL = Y COORDINATE - GVX HEIGHT SALE NEGATIVO
+		ld a, h    ; Load high byte into accumulator
+    	cpl        ; Invert all bits (1's complement)
+    	ld h, a    ; Store back to H
+    	ld a, l    ; Load low byte into accumulator
+    	cpl        ; Invert all bits
+    	ld l, a    ; Store back to L
+		INC HL
 		LD BC,(GRPACY);	Y Graphics Accumulator
 		ADD HL,BC
 		LD IX, (GRPACX);
@@ -824,9 +831,10 @@ PLOT_ABSOLUTE:
     LD 		A,(VDU_GVXH)					  
 	DEC 	A                 
 	SUB 	L				  
-	LD 		L,A 		  ; HL contiene Y escalado e invertido, H siempre es 0
+	LD 		L,A 	
+DO_NOT_NEED_INVERT:	  ; HL contiene Y escalado e invertido, H siempre es 0
 	LD A,(VDU_ARGV+4) 		;loads plot mode AGAIN
-DO_NOT_NEED_INVERT:
+
 	BIT 6,A 
 	JR NZ,PLOT_POINT
 PLOT_LINE:
