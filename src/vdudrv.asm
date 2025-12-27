@@ -82,6 +82,7 @@ CPL_HL:
 DRAW_LINE_CMD:
 	push ix
 	ld ix,StartX
+	ld (ix+12),0 ;reset flags
 	ld hl,(ix)
 	ld de,(ix+4)
 	or a
@@ -882,8 +883,6 @@ PLOT_ABSOLUTE:
 	LD 		L,A 	
 DO_NOT_NEED_INVERT:	  ; HL contiene Y escalado e invertido, H siempre es 0
 	LD A,(VDU_ARGV+4) 		;loads plot mode AGAIN
-	LD IY,lineFlags
-	ld (iy),0 ;reset flags
 	BIT 6,A 
 	JR NZ,PLOT_POINT
 PLOT_LINE:
@@ -1068,8 +1067,6 @@ PLOT_RECTANGLE:
 
 
 PLOT_FILL_HORIZONTAL_LINE:
-	LD IY,lineFlags
-	LD (IY),1 ;set flags to 1
 	LD IY,vdp_cmd
 	LD (IY),01100000b    ;line cmd
 	AND 00000011b
@@ -1085,8 +1082,6 @@ PLOT_FILL_HORIZONTAL_LINE:
 	PLOT_FILL_HORIZONTAL_LINE_FGC:
 	PLOT_FILL_HORIZONTAL_LINE_IFG:
 	PLOT_FILL_HORIZONTAL_LINE_BGC:
-		LD IY,lineFlags
-		LD (IY),1 ;set flags to stop when color is not backgroud
 		LD (StartX), DE
 		LD (StartY), HL
 		LD BC,00
