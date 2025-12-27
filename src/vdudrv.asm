@@ -68,7 +68,6 @@ vdp_cmd:		DB 0	;15
 
 
 
-
 CPL_HL:
     ; Negar el byte bajo (L)
     ld a, l       ; Cargar el contenido de L en el acumulador A
@@ -83,7 +82,6 @@ CPL_HL:
 DRAW_LINE_CMD:
 	push ix
 	ld ix,StartX
-	ld (ix+12),0 ;reset flags
 	ld hl,(ix)
 	ld de,(ix+4)
 	or a
@@ -121,13 +119,17 @@ _positive_up_flag:
 	LD (ix+10),hl
 
 _hl_geq_de:
+	ld a,(ix+15)	;vdp command
+	CP 01100000b	;search command
+	JR Z,_isearch
 _iline:
-
+	;hay que indicar el registro de inicio , NO SIEMPRE ES EL 36
+	;DEPENDERÁ DEL COMANDO
 	call	WAIT_VDP_READY
 	ld	a,36
-	out	(VDP_CTRL_PORT),a
+	out	(VDP_CTRL_PORT),a   ;R#36
 	ld	a,128+17
-	out	(VDP_CTRL_PORT),a	;R#17 := 36
+	out	(VDP_CTRL_PORT),a	;R#17 indirect access
 	ld	c,09bh
 	xor a
 	ld hl,(ix)
@@ -153,6 +155,37 @@ _iline:
 	pop ix
 	ret
 
+_isearch:
+	;hay que indicar el registro de inicio , NO SIEMPRE ES EL 36
+	;DEPENDERÁ DEL COMANDO
+	call	WAIT_VDP_READY
+	ld	a,32
+	out	(VDP_CTRL_PORT),a
+	ld	a,128+17
+	out	(VDP_CTRL_PORT),a	;R#17 indirect access
+	ld	c,09Bh
+	xor a
+	ld hl,(ix)
+	ld de,(ix+2)
+	out	(c),l		;X from R#32
+	out	(c),h		;       R#33
+	out	(c),e		;Y from R#34
+	out	(c),d		;       R#35
+	ld	a,44
+	out	(VDP_CTRL_PORT),a
+	ld	a,128+17
+	out	(VDP_CTRL_PORT),a	;R#17 indirect access
+	ld a,(ix+13)    ;Color
+	out	(c),a		;       R#44   
+	ld a,(ix+12)	;Flags
+	set 1,A
+	out	(c),a       ;       R#45
+	ld a,(ix+14)	;logop  
+	ld l,(ix+15)	;vdp command
+	or l
+	out	(c),a		;       R#46
+	pop ix
+	ret
 
 	;E is the physical color
 	;and the index in the palette table
@@ -226,6 +259,21 @@ WAIT_VDP_READY:
     ei
     out (VDP_CTRL_PORT),a     ; loop if vdp not ready (CE)
     jp c,WAIT_VDP_READY
+    ret
+
+READ_VDP_STATUS_REGISTER:
+	di
+    out (VDP_CTRL_PORT),a     ; select s#A
+    ld a,15 + 128
+    out (VDP_CTRL_PORT),a
+    in a,(VDP_CTRL_PORT)
+    ex af,af'
+    xor a           ; ld a,0
+    out (VDP_CTRL_PORT),a
+    ld a,15 + 128
+    ei
+    out (VDP_CTRL_PORT),a
+    ex af,af'
     ret
 
 	EXTERN	ITEMI
@@ -834,7 +882,8 @@ PLOT_ABSOLUTE:
 	LD 		L,A 	
 DO_NOT_NEED_INVERT:	  ; HL contiene Y escalado e invertido, H siempre es 0
 	LD A,(VDU_ARGV+4) 		;loads plot mode AGAIN
-
+	LD IY,lineFlags
+	ld (iy),0 ;reset flags
 	BIT 6,A 
 	JR NZ,PLOT_POINT
 PLOT_LINE:
@@ -880,6 +929,8 @@ PLOT_POINT:
 	JP NZ,PLOT_RECTANGLE
 	BIT 4,A     ;(BIT 6 AND 4 )
 	JR NZ,PLOT_TRIANGLE
+	BIT 3,A     ;(BIT 6 AND 3 )
+	JP NZ,PLOT_FILL_HORIZONTAL_LINE
 	AND 00000011b
 	CP 0 					;move relative command
 	JR Z, MOVETO
@@ -945,9 +996,7 @@ PLOT_TRIANGLE:
 		LD BC,(GYPOSH)
 		LD (EndY),BC
 		CALL DRAW_LINE_CMD
-
 		RET
-
 
 PLOT_RECTANGLE:
 	LD IY,vdp_cmd
@@ -964,7 +1013,7 @@ PLOT_RECTANGLE:
 	;CMD IMPLEMENTATION
 	PLOT_RECTANGLE_FGC:
 		LD IY,vdp_cmd
-		LD (IY),10000000b    ;line cmd
+		LD (IY),10000000b    ;HMMV cmd
 		LD BC, (GRPACX)
 		LD (StartX), BC
 		LD BC, (GRPACY)
@@ -1012,6 +1061,80 @@ PLOT_RECTANGLE:
 		LD (EndY),BC
 		LD BC,(GRPACX)      ;HASTA PUNTO ANTERIOR
 		LD (EndX),BC
+		CALL DRAW_LINE_CMD
+		RET
+
+
+
+
+PLOT_FILL_HORIZONTAL_LINE:
+	LD IY,lineFlags
+	LD (IY),1 ;set flags to 1
+	LD IY,vdp_cmd
+	LD (IY),01100000b    ;line cmd
+	AND 00000011b
+	CP 0 					;move relative command
+	JP Z, MOVETO
+	CP 1 					;draw horizontal line at pos in foreground color
+	JR Z, PLOT_FILL_HORIZONTAL_LINE_FGC
+	CP 2 					;draw horizontal line  at pos in inverse foreground color
+	JR Z, PLOT_FILL_HORIZONTAL_LINE_IFG
+	CP 3 					;draw horizontal line  at pos in background color
+	JR Z, PLOT_FILL_HORIZONTAL_LINE_BGC
+	;CMD IMPLEMENTATION
+	PLOT_FILL_HORIZONTAL_LINE_FGC:
+	PLOT_FILL_HORIZONTAL_LINE_IFG:
+	PLOT_FILL_HORIZONTAL_LINE_BGC:
+		LD IY,lineFlags
+		LD (IY),1 ;set flags to stop when color is not backgroud
+		LD (StartX), DE
+		LD (StartY), HL
+		LD BC,00
+		LD (EndX),BC
+		INC HL
+		LD (EndY),HL
+		LD A,(Color)  ;stores current color in STACK
+		PUSH AF
+		LD A,(BAKCLR) ;sets color to bg color
+		LD (Color),A
+		CALL DRAW_LINE_CMD	;SEARCHES TO THE LEFT
+		CALL WAIT_VDP_READY
+		LD A, 8
+		CALL READ_VDP_STATUS_REGISTER ;reads result of register 8
+		LD L,A
+		LD A, 9
+		CALL READ_VDP_STATUS_REGISTER ;reads result of register 9
+		AND 00000001B
+		LD H,A
+		PUSH HL
+		LD BC,(VDU_GVXW)
+		DEC BC
+		LD (EndX),BC
+		CALL DRAW_LINE_CMD   ;SEARCHES TO THE RIGHT
+		CALL WAIT_VDP_READY
+		LD A, 8
+		CALL READ_VDP_STATUS_REGISTER;reads result of register 8
+		LD E,A
+		LD A, 9
+		CALL READ_VDP_STATUS_REGISTER;reads result of register 9
+		AND 00000001B
+		LD D,A
+		POP HL
+		POP AF
+		LD (Color),A  
+		LD A, H
+    	XOR D          ; Compara parte alta
+    	JR NZ, HL_NO_IGUAL_DE
+    	LD A, L
+    	XOR E          ; Compara parte baja
+    	JR NZ, HL_NO_IGUAL_DE
+		ret
+HL_NO_IGUAL_DE:
+    ; HL es exactamente igual a DE
+		ld (StartX),HL
+		ld (EndX),DE
+		LD IY,vdp_cmd
+		LD (IY),10000000b    ;HMMV VDP->VRAM cmd
 		CALL DRAW_LINE_CMD
 		RET
 
