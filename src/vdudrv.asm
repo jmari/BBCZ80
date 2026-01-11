@@ -45,6 +45,7 @@ TFILL	EQU	03H
 ; --- Definiciones de Puertos y Registros VDP ---
 VDP_DATA_PORT   EQU 98h
 VDP_CTRL_PORT   EQU 99h
+VDP_INDR_PORT   EQU 9Bh
 
 R36 EQU 36
 R38 EQU 38
@@ -61,10 +62,11 @@ EndX:       DW 200  ;4
 EndY:       DW 150  ;6
 Maj:		DW 150  ;8
 Min:		DW 100  ;10
-lineFlags:	DB 0    ;12
-Color:		DB 0    ;13
+Color:		DB 0    ;12
+lineFlags:	DB 0    ;13
 LogOp:		DB 0    ;14
-vdp_cmd:		DB 0	;15
+vdp_cmd:	DB 0	;15
+
 
 
 
@@ -79,33 +81,35 @@ CPL_HL:
     ld h, a       ; Guardar el resultado negado de vuelta en H
 	inc hl
     ret           ; Retornar de la subrutina (si se usa como CALL)
-DRAW_LINE_CMD:
+
+
+VDP_DRAW_GENERIC_CMD:
 	push ix
 	ld ix,StartX
-	ld (ix+12),0 ;reset flags
+	ld (ix+13),0 ;reset flags
 	ld hl,(ix)
 	ld de,(ix+4)
 	or a
-	set 2,(ix+12)
+	set 2,(ix+13)
 	SBC HL, DE
 	bit 7,H
-	jr Z,_positive_left_flag
-	res 2,(ix+12)
+	jr Z,@positive_left_flag
+	res 2,(ix+13)
 	call CPL_HL    ;nbX es ahora positivo 
-_positive_left_flag:
+@positive_left_flag:
 	ld (ix+8),hl
 	ld hl,(ix+2)
 	ld de,(ix+6)
 	or a
-	set 3,(ix+12)
+	set 3,(ix+13)
 	SBC HL, DE
 	bit 7,H
-	jr Z,_positive_up_flag
-	res 3,(ix+12)
+	jr Z,@positive_up_flag
+	res 3,(ix+13)
 	call CPL_HL    ;nbY es ahora positivo 
-_positive_up_flag:
+@positive_up_flag:
 	ld (ix+10),HL
-	ld b,(ix+12)
+	ld b,(ix+13)
 	ld a,(ix+14)
 ;who is larger
 	ld hl,(ix+8)
@@ -113,25 +117,25 @@ _positive_up_flag:
 	or a
 	SBC HL, DE
 	bit 7,H
-	jr Z, _hl_geq_de
-	SET 0,(ix+12)
+	jr Z, @hl_geq_de
+	SET 0,(ix+13)
 	ld hl,(ix+8)
 	LD (ix+8),de
 	LD (ix+10),hl
 
-_hl_geq_de:
+@hl_geq_de:
 	ld a,(ix+15)	;vdp command
 	CP 01100000b	;search command
 	JR Z,_isearch
 _iline:
 	;hay que indicar el registro de inicio , NO SIEMPRE ES EL 36
 	;DEPENDERÁ DEL COMANDO
-	call	WAIT_VDP_READY
+	call	_wait_vdp_ready
 	ld	a,36
 	out	(VDP_CTRL_PORT),a   ;R#36
 	ld	a,128+17
 	out	(VDP_CTRL_PORT),a	;R#17 indirect access
-	ld	c,09bh
+	ld	c,VDP_INDR_PORT
 	xor a
 	ld hl,(ix)
 	ld de,(ix+2)
@@ -145,9 +149,9 @@ _iline:
 	out	(c),h		;       R#41
 	out	(c),e		;Minsid R#42
 	out	(c),d       ;       R#43
-	ld a,(ix+13)    ;Color
+	ld a,(ix+12)    ;Color
 	out	(c),a		;       R#44   
-	ld a,(ix+12)	;Flags
+	ld a,(ix+13)	;Flags
 	out	(c),a       ;       R#45
 	ld a,(ix+14)	;logop  
 	ld l,(ix+15)	;vdp command
@@ -157,14 +161,15 @@ _iline:
 	ret
 
 _isearch:
-	;hay que indicar el registro de inicio , NO SIEMPRE ES EL 36
-	;DEPENDERÁ DEL COMANDO
-	call	WAIT_VDP_READY
+	call	_wait_vdp_ready
+	ld a,(ix+13)	;set Flag
+	set 1,a
+	ld (ix+13),a
 	ld	a,32
 	out	(VDP_CTRL_PORT),a
 	ld	a,128+17
 	out	(VDP_CTRL_PORT),a	;R#17 indirect access
-	ld	c,09Bh
+	ld	c,VDP_INDR_PORT
 	xor a
 	ld hl,(ix)
 	ld de,(ix+2)
@@ -176,10 +181,9 @@ _isearch:
 	out	(VDP_CTRL_PORT),a
 	ld	a,128+17
 	out	(VDP_CTRL_PORT),a	;R#17 indirect access
-	ld a,(ix+13)    ;Color
+	ld a,(ix+12)    ;Color
 	out	(c),a		;       R#44   
-	ld a,(ix+12)	;Flags
-	set 1,A
+	ld a,(ix+13)	;Flags
 	out	(c),a       ;       R#45
 	ld a,(ix+14)	;logop  
 	ld l,(ix+15)	;vdp command
@@ -191,12 +195,12 @@ _isearch:
 	;E is the physical color
 	;and the index in the palette table
 _ipalette:    
-	;call	WAIT_VDP_READY i think we dont need that
+	;call	_wait_vdp_ready i think we dont need that
 	ld	a,E
 	out	(VDP_CTRL_PORT),a
 	ld	a,128+16
 	out	(VDP_CTRL_PORT),a	   ;R#16 := pysical 
-	ld	c,09bh
+	ld	c,VDP_INDR_PORT
 	xor a
 	ld ix,PALETTE
 	rl e
@@ -212,12 +216,12 @@ _ipalette:
 _plotSinglePoint:
 	push ix
 	ld ix,StartX
-	call	WAIT_VDP_READY
+	call	_wait_vdp_ready
 	ld	a,36
 	out	(VDP_CTRL_PORT),a
 	ld	a,128+17
 	out	(VDP_CTRL_PORT),a	;R#17 := 36
-	ld	c,09bh
+	ld	c,VDP_INDR_PORT
 	xor a
 	ld hl,(ix+4)
 	ld de,(ix+6)
@@ -245,7 +249,7 @@ _chColors:
     OUT  (VDP_CTRL_PORT), A
     RET
 
-WAIT_VDP_READY:
+_wait_vdp_ready:
 	
     ld a,2
     di
@@ -259,10 +263,10 @@ WAIT_VDP_READY:
     ld a,15 + 128
     ei
     out (VDP_CTRL_PORT),a     ; loop if vdp not ready (CE)
-    jp c,WAIT_VDP_READY
+    jp c,_wait_vdp_ready
     ret
 
-READ_VDP_STATUS_REGISTER:
+_read_vdp_status_register:
 	di
     out (VDP_CTRL_PORT),a     ; select s#A
     ld a,15 + 128
@@ -332,6 +336,8 @@ READ_VDP_STATUS_REGISTER:
 	VDU_GVOY:	DEFW 0000H
 	VDU_GVXW: 	DEFW 0000H
 	VDU_GVXH:	DEFW 0000H
+	VDU_GVEX: 	DEFW 0000H
+	VDU_GVEY:	DEFW 0000H
 ;----------Text Viewport variables-------------
 	VDU_TVOX:	DEFB 0000H	
 	VDU_TVOY:	DEFB 0000H
@@ -367,20 +373,495 @@ _findPhysicalColor:
 	AND 11110000B
 	LD E,A
 	LD HL, PALETTE
-_fPC_loop:
+@loop:
 	LD A,(HL)
 	AND 11110000B
 	CP  E
-	jr Z,_fPC_exit_loop
+	jr Z,@exit_loop
 	INC HL
 	INC HL
-	DJNZ _fPC_loop
-_fPC_exit_loop:
+	DJNZ @loop
+@exit_loop:
 	LD A,15
 	SUB B
 	RET
 
-;----------------------------------------------
+;*************************************TRIANGLE SECTION**********************************************
+
+;; ==========================================================
+; ZONA DE DATOS (RAM)
+; ==========================================================
+
+; --- Puntos de entrada (Rellenar antes de llamar) ---
+P0_X: DEFW 0  
+P0_Y: DEFW 0
+P1_X: DEFW 0
+P1_Y: DEFW 0
+P2_X: DEFW 0
+P2_Y: DEFW 0
+
+; --- Interfaz con  rutina de línea ---
+USER_X0: DEFW 0 ; Start X
+USER_Y0: DEFW 0 ; Start Y (e Y actual)
+USER_X1: DEFW 0 ; End X
+USER_Y1: DEFW 0 ; End Y (Ignorado si es horizontal, pero lo rellenamos por si acaso)
+
+; --- Estructura de Rastreo de Bordes (Bresenham) ---
+; Necesitamos dos instancias: una para el lado largo (A) y otra para el corto (B)
+; Offset:
+; +0 Current_X (DW)
+; +2 Step_X    (DW) -> Pasos enteros por línea (ej: 2 pixeles) con signo
+; +4 Error_Acc (DW) -> Acumulador de error actual
+; +6 Error_Adj (DW) -> Cuánto restar al error (Delta Y)
+; +8 Error_Inc (DW) -> Cuánto sumar al error (Resto de DX/DY)
+; +10 Sign_X   (DW) -> +1 o -1 (para el ajuste del error)
+
+EDGE_LONG:  DEFS 12 ; Estructura para el lado P0 -> P2
+EDGE_ACTIVE: DEFS 12 ; Estructura para el lado P0->P1 y luego P1->P2
+NOP
+NOP
+CLIP_HORIZONTAL:
+    ; ---------------------------
+    ; 1. PROCESAR START X
+    ; ---------------------------
+    LD HL, (StartX)     ; HL = Valor a comprobar
+    CALL CLIP_VAL_HL    ; Llamamos a la rutina de recorte
+    LD (StartX), HL     ; Guardamos el resultado corregido
+
+    ; ---------------------------
+    ; 2. PROCESAR END X
+    ; ---------------------------
+    LD HL, (EndX)       ; HL = Valor a comprobar
+    CALL CLIP_VAL_HL    ; Llamamos a la rutina de recorte
+    LD (EndX), HL       ; Guardamos el resultado corregido
+    RET
+
+; ==========================================================
+; CLIP_VAL_HL (VERSIÓN SIGNED)
+; Entrada: HL = Valor X a comprobar (Puede ser negativo)
+; Salida:  HL = Valor recortado (entre GVOX y GVEX)
+; ==========================================================
+CLIP_VAL_HL:
+    ; --- CHECK MIN (VDU_GVOX) ---
+    LD DE, (VDU_GVOX)   ; Cargar Mínimo (ej. 0)
+    CALL COMPARE_HL_DE ; <--- CAMBIO CLAVE AQUÍ
+    ; Si Carry está ON, significa que HL < DE (Signed)
+    ; Es decir, HL es negativo o menor que el borde izquierdo.
+    JR NC, @CHECK_MAX   ; Si HL >= Min, pasamos a ver el Máx.
+    
+    ; CORRECCIÓN MÍNIMO
+    EX DE, HL           ; HL toma el valor de DE (Mínimo)
+    RET                 ; Retornamos (Ya recortamos al mínimo)
+
+@CHECK_MAX:
+    ; --- CHECK MAX (VDU_GVEX) ---
+    LD DE, (VDU_GVEX)   ; Cargar Máximo (ej. 255 o 320)
+    CALL COMPARE_HL_DE ; <--- CAMBIO CLAVE AQUÍ
+    ; Si Carry está ON, significa HL < Max. Es válido.
+    RET C               
+    ; Si Zero está ON, significa HL == Max. Es válido.
+    RET Z               
+
+    ; CORRECCIÓN MÁXIMO
+    EX DE, HL           ; HL toma el valor de DE (Máximo)
+    RET
+
+; ==========================================================
+; COMPARE_HL_DE
+; Compara HL con DE usando aritmética de COMPLEMENTO A 2.
+; Funciona correctamente con valores negativos.
+; C set si HL < DE (ej. -5 < 0)
+; NC set si HL >= DE
+; Z set si HL == DE
+; Preserva HL y DE.
+; ==========================================================
+COMPARE_HL_DE:
+    PUSH HL
+    PUSH DE
+    
+    ; --- TRUCO DEL BIT DE SIGNO ---
+    ; Invertimos el bit 7 de H y D.
+    ; Esto mueve el rango de -32768..+32767 a 0..65535
+    ; haciendo que una resta normal funcione para comparar magnitud.
+    LD A, H
+    XOR $80
+    LD H, A
+    
+    LD A, D
+    XOR $80
+    LD D, A
+    
+    ; --- COMPARACIÓN ---
+    OR A            ; Limpiar Carry
+    SBC HL, DE      ; Resta normal (ahora con los rangos corregidos)
+    
+    POP DE          ; Restauramos los valores originales
+    POP HL
+    RET
+; ==========================================================
+; RUTINA PRINCIPAL: FILL_TRIANGLE
+; ==========================================================
+FILL_TRIANGLE:
+    ; 1. Ordenar vértices
+    call SORT_POINTS
+
+    ; 2. Calcular Altura Total y preparar EDGE_LONG
+    ld hl, (P2_Y)
+    ld de, (P0_Y)
+    or a
+    sbc hl, de
+    ret z           ; Altura 0
+    
+    ld b, h
+    ld c, l         ; BC = Altura Real (P2.y - P0.y) <--- IMPORTANTE
+    ld iy, EDGE_LONG
+    ld hl, (P2_X)
+    ld de, (P0_X)
+    call SETUP_EDGE_BRESENHAM
+
+    ; 3. --- MITAD SUPERIOR ---
+    ld hl, (P1_Y)
+    ld de, (P0_Y)
+    or a
+    sbc hl, de
+    jr z, @setup_bottom ; Triángulo con parte superior plana
+
+    push hl         ; Guardar altura superior (DY)
+    ld b, h
+    ld c, l         ; BC = Altura superior real
+    ld iy, EDGE_ACTIVE
+    ld hl, (P1_X)
+    ld de, (P0_X)
+    call SETUP_EDGE_BRESENHAM
+    
+    pop bc          ; BC = Altura para el bucle
+    ld hl, (P0_Y)
+    ld (USER_Y0), hl
+    call RENDER_LOOP
+
+    ; 4. --- MITAD INFERIOR ---
+@setup_bottom:
+    ld hl, (P2_Y)
+    ld de, (P1_Y)
+    or a
+    sbc hl, de
+    ret z           ; Parte inferior plana
+
+    push hl         ; Guardar altura inferior (DY)
+    ld b, h
+    ld c, l         ; BC = Altura inferior real
+    ld iy, EDGE_ACTIVE
+    ld hl, (P2_X)
+    ld de, (P1_X)
+    call SETUP_EDGE_BRESENHAM
+
+    pop bc          ; BC = Altura para el bucle
+    ld hl, (P1_Y)
+    ld (USER_Y0), hl
+    call RENDER_LOOP
+    ret
+
+; Entrada: BC = Número de líneas (Altura), USER_Y0 = Y actual
+RENDER_LOOP:
+    ld a, b
+    or c
+    ret z
+@loop:
+    push bc
+
+    ; 1. Cargar coordenadas X actuales de los bordes
+    ld hl, (EDGE_LONG + 0)   ; Current_X Long
+    ld (USER_X0), hl
+    
+    ld hl, (EDGE_ACTIVE + 0) ; Current_X Active
+    ld (USER_X1), hl
+    
+    ld hl, (USER_Y0)
+    ; -----    HL HAS CURRENT Y
+    ; --- Comparar con el límite superior (Y < V_YMIN) ---
+    LD DE, (VDU_GVOY)
+    CALL COMPARE_HL_DE  ; HL=Y, DE=V_YMIN. Carry si Y < V_YMIN
+    JR C, @NOTHING2DRAWORPUSH    ; Si es menor, está por encima: No dibujar
+    
+    ; --- Comparar con el límite inferior (Y > V_YMAX) ---
+    LD DE, (VDU_GVEY)
+	INC DE
+    CALL COMPARE_HL_DE  ; Carry si Y > V_MAX
+    JR NC, @NOTHING2DRAWORPUSH    ; Si es mayor, está por debajo: No dibujar
+	inc hl
+    ld (USER_Y1), hl   
+   
+    ; 2. --- RUTINA VDP---
+    ; Tu rutina lee USER_X0, Y0, USER_X1, Y1 y dibuja
+    push ix
+    push iy
+	
+	; ESTA ES mi rutina
+	LD IY, (USER_X0)
+	LD (StartX), IY
+	LD IY, (USER_Y0)
+	LD (StartY), IY
+	LD IY, (USER_X1)
+	LD (EndX), IY
+	LD IY, (USER_Y1)
+	LD (EndY), IY
+	CALL CLIP_HORIZONTAL
+	LD HL,(StartX)
+	LD DE,(EndX)
+	CALL COMPARE_HL_DE
+	JR Z,@NOTHING2DRAW
+	LD IY,vdp_cmd
+	LD (IY),10000000b    ;HMMV cmd
+	CALL VDP_DRAW_GENERIC_CMD
+	;----fin de mi rutina
+@NOTHING2DRAW:
+    pop iy
+    pop ix
+@NOTHING2DRAWORPUSH:
+	
+    ; 3. Avanzar Bresenham para el siguiente Y
+    ld iy, EDGE_LONG
+    call UPDATE_EDGE
+    
+    ld iy, EDGE_ACTIVE
+    call UPDATE_EDGE
+    
+    ; 4. Incrementar Y y bucle
+    ld hl, (USER_Y0)
+    inc hl
+    ld (USER_Y0), hl
+    
+    pop bc
+    dec bc
+    ld a, b
+    or c
+    jp nz, @loop
+    ret
+
+; ----------------------------------------------------------
+; SETUP_EDGE_BRESENHAM
+; Entrada: 
+;   IY = Puntero a estructura EDGE
+;   HL = X Destino
+;   DE = X Origen
+;   BC = Y Destino (se usa para calcular altura con Y Origen implícito)
+;   (Nota: Y Origen no se pasa explícitamente porque calculamos DY con P0_Y o P1_Y fuera,
+;    pero para simplificar, pasamos DY directamente en BC en esta versión optimizada)
+;
+;   CORRECCION: Para hacerlo genérico, recalcularemos DY dentro.
+;   Requerimos: DE = X Start, HL = X End. 
+;   Necesitamos saber DY. Asumiremos que el caller ya calculó DY y lo pasa en BC.
+;   Entrada Real: DE=X_Start, HL=X_End, BC=DY (Altura > 0), IY=Struct
+; ----------------------------------------------------------
+; ----------------------------------------------------------
+; SETUP_EDGE_BRESENHAM
+; Entrada: DE=X_Start, HL=X_End, BC=DY, IY=Struct
+; ----------------------------------------------------------
+SETUP_EDGE_BRESENHAM:
+    ; 1. Guardar X inicial
+    ld (iy+0), e
+    ld (iy+1), d   ; Current_X = X_Start
+
+    ; 2. Guardar DY (BC)
+    ld (iy+6), c
+    ld (iy+7), b   ; DY
+
+    ; 3. Calcular DX = X_End - X_Start
+    or a
+    sbc hl, de     ; HL = DX
+    
+    ; 4. Determinar signo de DX y obtener valor absoluto
+    bit 7, h
+    jr nz, @negative
+
+@positive:
+    ld (iy+10), 1  ; Sign_X = 1
+    ld (iy+11), 0
+    jr @calc_err
+
+@negative:
+    ld (iy+10), -1 ; Sign_X = -1
+    ld (iy+11), -1
+    ; HL = ABS(DX) -> Negar HL
+    ex de, hl
+    ld hl, 0
+    or a
+    sbc hl, de
+
+@calc_err:
+    ; Ahora HL = |DX| y BC = DY
+    ld (iy+2), l   ; Guardamos |DX| en el lugar de Error_Inc
+    ld (iy+3), h
+    
+    ; Inicializar Error_Acc. 
+    ; Para un centrado perfecto: Error = |DX| / 2 o simplemente 0
+    ld (iy+4), 0   
+    ld (iy+5), 0
+    ret
+
+; ----------------------------------------------------------
+; UPDATE_EDGE
+; Avanza la X para la siguiente línea Y
+; ----------------------------------------------------------
+UPDATE_EDGE:
+    ; Error_Acc += |DX|
+    ld l, (iy+4)
+    ld h, (iy+5)
+    ld c, (iy+2)   ; |DX|
+    ld b, (iy+3)
+    add hl, bc
+    
+    ; BC = DY
+    ld c, (iy+6)
+    ld b, (iy+7)
+
+@test_step:
+    ; ¿Error_Acc >= DY?
+    or a
+    sbc hl, bc
+    jr c, @finish   ; Si es menor, no hay más pasos de X en esta Y
+
+    ; X += Sign_X
+    push hl
+    ld l, (iy+0)
+    ld h, (iy+1)
+    ld e, (iy+10)  ; Sign_X
+    ld d, (iy+11)
+    add hl, de
+    ld (iy+0), l
+    ld (iy+1), h
+    pop hl
+    
+    ; Repetir para pendientes > 45º (donde |DX| > DY)
+    jr @test_step
+
+@finish:
+    ; Restaurar Error_Acc (el SBC restó DY de más)
+    add hl, bc
+    ld (iy+4), l
+    ld (iy+5), h
+    ret
+
+; ----------------------------------------------------------
+; SORT_POINTS (CORREGIDO PARA SIGNED 16-BIT)
+; Ordena P0, P1 y P2 para que P0 sea el superior (menor Y) 
+; y P2 el inferior (mayor Y).
+; ----------------------------------------------------------
+SORT_POINTS:
+    ; --- Comparar P0 y P1 ---
+    ld hl, (P0_Y)
+    ld de, (P1_Y)
+    CALL CMP_SIGNED     ; Carry Set si HL < DE (Signed)
+    jr c, @skip1        ; Si P0 < P1, está bien, saltar
+    jr z, @skip1        ; Si son iguales, saltar
+    call SWAP_P0_P1     ; Si P0 > P1, intercambiar
+
+@skip1:
+    ; --- Comparar P1 y P2 ---
+    ld hl, (P1_Y)
+    ld de, (P2_Y)
+    CALL CMP_SIGNED     ; Carry Set si HL < DE (Signed)
+    jr c, @skip2
+    jr z, @skip2
+    call SWAP_P1_P2
+
+@skip2:
+    ; --- Re-comparar P0 y P1 ---
+    ld hl, (P0_Y)
+    ld de, (P1_Y)
+    CALL CMP_SIGNED
+    ret c
+    ret z
+    call SWAP_P0_P1
+    ret
+
+; ==========================================================
+; CMP_SIGNED
+; Compara HL vs DE considerando signo (Complemento a 2)
+; Entrada: HL, DE
+; Salida: 
+;   Carry = 1 si HL < DE
+;   Carry = 0 si HL >= DE
+;   Zero  = 1 si HL == DE
+; Nota: Preserva HL y DE intactos
+; ==========================================================
+CMP_SIGNED:
+    PUSH HL
+    PUSH DE
+    
+    ; Invertimos el bit de signo (Bit 7 de H y D)
+    ; Esto desplaza el rango de -32768..32767 a 0..65535
+    LD A, H
+    XOR $80
+    LD H, A
+    
+    LD A, D
+    XOR $80
+    LD D, A
+    
+    ; Ahora comparamos normalmente
+    OR A            ; Limpiar Carry
+    SBC HL, DE      ; Comparación estándar
+    
+    POP DE          ; Recuperamos valores originales
+    POP HL          ; (POP no afecta a los flags C ni Z)
+    RET
+
+; --- Bloques de intercambio ---
+
+
+
+SWAP_P0_P1:
+    ld hl, P0_X
+    ld de, P1_X
+    jr __do_swap
+
+SWAP_P1_P2:
+    ld hl, P1_X
+    ld de, P2_X
+
+__do_swap:
+    ; Intercambia 4 bytes (X low, X high, Y low, Y high)
+    ld b, 4
+@loop:
+    ld a, (hl)
+    ld c, (de)
+    ld (hl), c
+    ld (de), a
+    inc hl
+    inc de
+    djnz @loop
+    ret
+; --- División 16 bits / 16 bits ---
+; Entrada: HL = Dividendo, DE = Divisor
+; Salida: HL = Cociente, DE = Resto
+DIV_16_16:
+    ; Entrada: HL = Dividendo, DE = Divisor
+    ; Salida: HL = Cociente, DE = Resto
+    ld bc, de      ; BC = Divisor
+    ld de, 0       ; DE = Acumulador de resto
+    ld a, 16       ; 16 bits
+@loop:
+    add hl, hl     ; Desplazar dividendo
+    ex de, hl
+    adc hl, hl     ; Desplazar resto
+    or a
+    sbc hl, bc     ; ¿Resta?
+    jr nc, @ok
+    add hl, bc     ; No cabe, restaurar
+    ex de, hl
+    jr @next
+@ok:
+    ex de, hl
+    inc l          ; Poner bit en cociente
+@next:
+    dec a
+    jr nz, @loop
+    ret
+
+
+;***************************************************************************************
+
 	SCROLL_Y_POS: DEFB 00H
 
 
@@ -794,22 +1275,35 @@ VDU22:
 	SET_VIEWPORT_MR:
 		LD     HL,256
 		LD     (VDU_GVXW), HL
+		DEC HL
+		LD     (VDU_GVEX), HL
 		LD     HL,212
 		LD     (VDU_GVXH), HL
+		DEC HL
+		LD     (VDU_GVEY), HL
+
 		JR CALL_CHMOD
 	
 	SET_VIEWPORT_LR:
 		LD     HL,256
 		LD     (VDU_GVXW), HL
+		DEC HL
+		LD     (VDU_GVEX), HL
 		LD     HL,192
 		LD     (VDU_GVXH), HL
+		DEC HL
+		LD     (VDU_GVEY), HL
 		JR CALL_CHMOD
 
 	SET_VIEWPORT_HR:
 		LD     HL,512
 		LD     (VDU_GVXW), HL
+		DEC HL
+		LD     (VDU_GVEX), HL
 		LD     HL,212
 		LD     (VDU_GVXH), HL
+		DEC HL
+		LD     (VDU_GVEY), HL
 		JR CALL_CHMOD
 	MODE_TEXT_1:
 	    ; La variable de sistema LINLEN (#F3EBH) almacena el número de columnas actual.
@@ -877,10 +1371,11 @@ VDU25_DRV:
 		POP DE
 		JR DO_NOT_NEED_INVERT
 PLOT_ABSOLUTE:
-    LD 		A,(VDU_GVXH)					  
-	DEC 	A                 
-	SUB 	L				  
-	LD 		L,A 	
+	;INVERT AXIS Y
+    LD 		BC,(VDU_GVEY)					        
+	SBC 	HL,BC
+	CALL    CPL_HL
+	
 DO_NOT_NEED_INVERT:	  ; HL contiene Y escalado e invertido, H siempre es 0
 	LD A,(VDU_ARGV+4) 		;loads plot mode AGAIN
 	BIT 6,A 
@@ -917,7 +1412,7 @@ PLOT_LINE:
 		LD (StartY), BC
 		LD (EndX),DE
 		LD (EndY),HL
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		LD HL,(EndX)
 		LD (GRPACX),HL    ;move to the last point
 		LD HL,(EndY)
@@ -968,6 +1463,19 @@ PLOT_TRIANGLE:
 	JR Z, PLOT_TRIANGLE_BGC
 	;CMD IMPLEMENTATION
 	PLOT_TRIANGLE_FGC:
+
+		LD BC, (GXPOSH)    ;desde 1er punto
+		LD (P0_X), BC
+		LD BC, (GYPOSH)
+		LD (P0_Y), BC	
+		LD BC,(GRPACX)      ;hasta segundo
+		LD (P1_X),BC
+		LD BC,(GRPACY)
+		LD (P1_Y),BC
+		LD (P2_X),DE
+		LD (P2_Y),HL
+		call FILL_TRIANGLE
+		RET
 	PLOT_TRIANGLE_IFG:
 	PLOT_TRIANGLE_BGC:
 		LD BC, (GXPOSH)    ;desde 1er punto
@@ -976,7 +1484,7 @@ PLOT_TRIANGLE:
 		LD (StartY), BC
 		LD (EndX),DE		;hasta tercero
 		LD (EndY),HL
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		LD BC, (EndX)		;desde tercero
 		LD (StartX), BC
 		LD BC, (EndY)
@@ -985,7 +1493,7 @@ PLOT_TRIANGLE:
 		LD (EndX),BC
 		LD BC,(GRPACY)
 		LD (EndY),BC
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		LD BC, (EndX)		;desde segundo
 		LD (StartX), BC	
 		LD BC, (EndY)
@@ -994,7 +1502,7 @@ PLOT_TRIANGLE:
 		LD (EndX),BC
 		LD BC,(GYPOSH)
 		LD (EndY),BC
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		RET
 
 PLOT_RECTANGLE:
@@ -1019,7 +1527,7 @@ PLOT_RECTANGLE:
 		LD (StartY), BC
 		LD (EndX),DE
 		LD (EndY),HL
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		RET
 	PLOT_RECTANGLE_IFG:
 	PLOT_RECTANGLE_BGC:	
@@ -1031,7 +1539,7 @@ PLOT_RECTANGLE:
 		LD (EndX),BC	
 		PUSH HL
 		PUSH DE
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		POP DE
 		POP HL
 		LD (StartY),HL
@@ -1041,7 +1549,7 @@ PLOT_RECTANGLE:
 		LD (EndY),HL
 		PUSH HL
 		PUSH DE
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		POP DE
 		POP HL
 		LD (StartY),HL
@@ -1051,7 +1559,7 @@ PLOT_RECTANGLE:
 		LD (EndX),DE
 		PUSH HL
 		PUSH DE
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		POP DE
 		POP HL
 		LD BC,(GRPACY)
@@ -1060,7 +1568,7 @@ PLOT_RECTANGLE:
 		LD (EndY),BC
 		LD BC,(GRPACX)      ;HASTA PUNTO ANTERIOR
 		LD (EndX),BC
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		RET
 
 
@@ -1092,26 +1600,26 @@ PLOT_FILL_HORIZONTAL_LINE:
 		PUSH AF
 		LD A,(BAKCLR) ;sets color to bg color
 		LD (Color),A
-		CALL DRAW_LINE_CMD	;SEARCHES TO THE LEFT
-		CALL WAIT_VDP_READY
+		CALL VDP_DRAW_GENERIC_CMD	;SEARCHES TO THE LEFT
+		CALL _wait_vdp_ready
 		LD A, 8
-		CALL READ_VDP_STATUS_REGISTER ;reads result of register 8
+		CALL _read_vdp_status_register ;reads result of register 8
 		LD L,A
 		LD A, 9
-		CALL READ_VDP_STATUS_REGISTER ;reads result of register 9
+		CALL _read_vdp_status_register ;reads result of register 9
 		AND 00000001B
 		LD H,A
 		PUSH HL
 		LD BC,(VDU_GVXW)
 		DEC BC
 		LD (EndX),BC
-		CALL DRAW_LINE_CMD   ;SEARCHES TO THE RIGHT
-		CALL WAIT_VDP_READY
+		CALL VDP_DRAW_GENERIC_CMD   ;SEARCHES TO THE RIGHT
+		CALL _wait_vdp_ready
 		LD A, 8
-		CALL READ_VDP_STATUS_REGISTER;reads result of register 8
+		CALL _read_vdp_status_register;reads result of register 8
 		LD E,A
 		LD A, 9
-		CALL READ_VDP_STATUS_REGISTER;reads result of register 9
+		CALL _read_vdp_status_register;reads result of register 9
 		AND 00000001B
 		LD D,A
 		POP HL
@@ -1130,7 +1638,7 @@ HL_NO_IGUAL_DE:
 		ld (EndX),DE
 		LD IY,vdp_cmd
 		LD (IY),10000000b    ;HMMV VDP->VRAM cmd
-		CALL DRAW_LINE_CMD
+		CALL VDP_DRAW_GENERIC_CMD
 		RET
 
 
@@ -1150,10 +1658,9 @@ VDU29:
 	LD E,A                 ;DE HAS X COORD
 	;SCALE
     CALL    SCALE_GRAPHIC_POS
-    LD 		A,(VDU_GVXH)					  
-	DEC 	A                 
-	SUB 	L				  
-	LD 		L,A 		  ; HL contiene Y escalado e invertido, H siempre es 0
+    LD 		BC,(VDU_GVEY)					        
+	SBC 	HL,BC		  ; HL contiene Y escalado e invertido, H siempre es 0
+	CALL CPL_HL
 	;LOADS SCALED COORD TO VDU_GVOX AND VDU_GVOY
 	LD A,E
 	LD (VDU_GVOX),A 		;LOW BYTE GRAPHIC ORIGIN X
