@@ -832,32 +832,6 @@ __do_swap:
     inc de
     djnz @loop
     ret
-; --- División 16 bits / 16 bits ---
-; Entrada: HL = Dividendo, DE = Divisor
-; Salida: HL = Cociente, DE = Resto
-DIV_16_16:
-    ; Entrada: HL = Dividendo, DE = Divisor
-    ; Salida: HL = Cociente, DE = Resto
-    ld bc, de      ; BC = Divisor
-    ld de, 0       ; DE = Acumulador de resto
-    ld a, 16       ; 16 bits
-@loop:
-    add hl, hl     ; Desplazar dividendo
-    ex de, hl
-    adc hl, hl     ; Desplazar resto
-    or a
-    sbc hl, bc     ; ¿Resta?
-    jr nc, @ok
-    add hl, bc     ; No cabe, restaurar
-    ex de, hl
-    jr @next
-@ok:
-    ex de, hl
-    inc l          ; Poner bit en cociente
-@next:
-    dec a
-    jr nz, @loop
-    ret
 
 
 ;***************************************************************************************
