@@ -2,12 +2,15 @@
     PUBLIC GET_FREE_SEGMENT
     PUBLIC SELECT_SEGMENT_P2
     PUBLIC GET_CURRENT_SEGMENT_P2
-    PUBLIC MAIN_SEGMENT
+    
+
+    ;TENEMOS QUE DEFINIR ESTAS DOS DW EN EL CLIENTE DE LA LIBRERIA
+    EXTERN MAPPER_JUMP_TABLE
+    EXTERN MAIN_SEGMENT
 ;------------------------------------------------------------------------------------UTILITY
 ; --- DIRECCIONES MSX-DOS 2 MAPPER ---
 ; La dirección de la tabla de salto del Mapper se encuentra en &F24F
-MAPPER_JUMP_TABLE:  DEFW 0
-MAIN_SEGMENT:       DEFB 0
+
 
 ; Offset de la función ALL_SEG en la tabla (normalmente es el primer salto)
 ALL_SEG_OFFSET    EQU 0 
@@ -79,7 +82,7 @@ GET_FREE_SEGMENT:
     LD   DE, ALL_SEG_OFFSET
     
     ; 3. Llamada al Mapper (Integrada para evitar líos de pila)
-    LD   HL, (MAPPER_JUMP_TABLE)  ; <--- ¡SIN PARÉNTESIS! 
+    LD   HL, (MAPPER_JUMP_TABLE)  
     ADD  HL, DE                 ; HL = F24F + 0
     
     ; 4. Ejecución
@@ -94,7 +97,7 @@ GET_FREE_SEGMENT:
 SELECT_SEGMENT_P2:
     PUSH AF
     LD   DE, PUT_P2_OFFSET
-    LD   IX, (MAPPER_JUMP_TABLE) ; <--- ¡CORREGIDO! Sin paréntesis
+    LD   IX, (MAPPER_JUMP_TABLE) 
     ADD  IX, DE               ; IX ahora sí apunta a F24F + 18
     POP  AF
     JP   (IX)                 ; Salta al "JP xxxx" del sistema
@@ -104,6 +107,6 @@ SELECT_SEGMENT_P2:
 ; -----------------------------------------------------------------------------
 GET_CURRENT_SEGMENT_P2:
     LD   DE, GET_P2_OFFSET
-    LD   IX, (MAPPER_JUMP_TABLE) ; <--- ¡CORREGIDO! Sin paréntesis
+    LD   IX, (MAPPER_JUMP_TABLE) 
     ADD  IX, DE               ; IX apunta a F24F + 21
     JP   (IX)                 ; Salta al "JP xxxx" del sistema y retorna A

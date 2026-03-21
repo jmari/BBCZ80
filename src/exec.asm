@@ -84,7 +84,7 @@
 	EXTERN	CSROFF
 ;
 	EXTERN	OSWRCH
-	EXTERN  OSWRCH_WITHOUT_READ
+	EXTERN  WRITE_VDU
 	EXTERN	OSLINE
 	EXTERN	OSSHUT
 	EXTERN	OSBPUT
@@ -1055,198 +1055,129 @@ FN:	PUSH	AF		;MAKE SPACE ON STACK
 	CALL	PROC1
 FNCHK	EQU	$
 ;
-;PROCname
-;N.B. ENTERED WITH A = ON PROC FLAG
-;
-PROC:	PUSH	AF		;MAKE SPACE ON STACK
-	CALL	PROC1
-PROCHK	EQU	$
-PROC1:	CALL	CHECK
-	DEC	IY
-	PUSH	IY
-	CALL	GETDEF
-	POP	BC
-	JR	Z,PROC4
-	LD	A,30
-	JR	C,ERROR3	;"Bad call"
-	PUSH	BC
-	LD	HL,(PAGE)
-PROC2:	LD	A,TDEF
-	CALL	SEARCH		;LOOK FOR "DEF"
-	JR	C,PROC3
-	PUSH	HL
-	POP	IY
-	INC	IY		;SKIP DEF
-	CALL	NXT
-	CALL	GETDEF
-	PUSH	IY
-	POP	DE
-	JR	C,PROC6
-	CALL	NZ,CREATE
-	PUSH	IY
-	POP	DE
-	LD	(HL),E
-	INC	HL
-	LD	(HL),D		;SAVE ADDRESS
-PROC6:	EX	DE,HL
-	LD	A,CR
-	LD	B,A
-	CPIR			;SKIP TO END OF LINE
-	JR	PROC2
-PROC3:	POP	IY		;RESTORE TEXT POINTER
-	CALL	GETDEF
-	LD	A,29
-	JR	NZ,ERROR3	;"No such FN/PROC"
-PROC4:	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)		;GET ADDRESS
-	LD	HL,2
-	ADD	HL,SP
-	CALL	NXT		;ALLOW SPACE BEFORE (
-	PUSH	DE		;EXCHANGE DE,IY
-	EX	(SP),IY
-	POP	DE
-	CP	'('		;ARGUMENTS?
-	JP	NZ,PROC5
-	CALL	NXT		;ALLOW SPACE BEFORE (
-	CP	'('
-	JP	NZ,SYNTAX	;"Syntax error"
-	PUSH	IY
-	POP	BC		;SAVE IY IN BC
-	EXX
-	EX	AF,AF'
-	XOR	A		;INITIALISE RETURN COUNT
-	EX	AF,AF'
-	CALL	SAVLOC		;SAVE DUMMY VARIABLES
-	EX	AF,AF'
-	OR	A
-	JR	Z,RETCHK	;NO RETURNS
-	PUSH	HL
-	NEG
-	LD	L,A
-	NEG
-	LD	H,-1		;HL = -RETURNS
-	ADD	HL,HL
-	ADD	HL,HL
-	ADD	HL,HL		;-RETURNS * 8
-	EX	(SP),HL
-	POP	IX
-	ADD	IX,SP
-	LD	SP,IX
-	PUSH	AF		;PUSH RETURN COUNT
-	CALL	RETCHK		;PUSH MARKER
-RETCHK:	EX	AF,AF'
-	CALL	BRAKET		;CLOSING BRACKET
-	EXX
-	PUSH	BC
-	POP	IY		;RESTORE IY
-	PUSH	HL
-	CALL	ARGUE		;TRANSFER ARGUMENTS
-	POP	HL
-;
-; If any of the dummy arguments is the same as a passed-by-reference
-; variable, then it must not be restored on exit (it would overwrite
-; the wanted returned values), therefore search the saved values on
-; the stack & if a match is found set bit 4 of the type.  On exit
-; from the FN/PROC this will prevent the dummies from being restored.
-;
-	EX	(SP),HL
-	OR	A
-	LD	BC,RETCHK
-	SBC	HL,BC
-	ADD	HL,BC
-	EX	(SP),HL
-	JR	NZ,PROC5	;No RETURNs
-;
-	PUSH	DE
-	PUSH	HL
-	LD	HL,7		;Skip two PUSHes & RETCHK
-	ADD	HL,SP
-	LD	A,(HL)		;RETURN count
-	INC	HL
-	PUSH	HL
-	POP	IX		;Address RETURNs table
-PROC0:	LD	E,A
-	LD	D,0
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,HL
-	ADD	HL,HL
-	ADD	HL,DE		;HL addresses SAVLOC stack
-	INC	HL
-	INC	HL		;Bump past LOCCHK
-PROC7:	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)		;DE = SAVLOC VARPTR
-	INC	HL
-	LD	C,(HL)		;Length (if string)
-	INC	HL
-	LD	B,(HL)		;Variable type
-;
-; Scan RETURNs table for VARPTR match
-;
-	PUSH	BC		;Save type
-	PUSH	HL
-	PUSH	IX
-	LD	B,A		;B = RETURN count
-PROC8:	LD	L,(IX+4)
-	LD	H,(IX+5)	;HL = RETURNed VARPTR
-	OR	A
-	SBC	HL,DE
-	JR	Z,PROC9
-	EX	DE,HL
-	LD	DE,8
-	ADD	IX,DE
-	EX	DE,HL
-	DJNZ	PROC8
-PROC9:	POP	IX
-	POP	HL
-	POP	BC		;Restore type
-;
-; If match, set bit 4 of type:
-;
-	JR	NZ,PROCA
-	SET	4,(HL)		;Flag don't restore
-;
-; Increment past stacked data:
-;
-PROCA:	LD	DE,3
-	BIT	6,B
-	JR	NZ,PROCB	;Whole array
-	LD	E,5
-	BIT	7,B
-	JR	Z,PROCB		;Numeric
-	LD	E,C
-	INC	DE
-PROCB:	ADD	HL,DE
-	LD	C,(HL)
-	INC	HL
-	LD	B,(HL)
-	INC	HL		; BC = marker ?
-	EX	DE,HL
-	LD	HL,LOCCHK
-	OR	A
-	SBC	HL,BC
-	EX	DE,HL
-	JR	Z,PROC7		;Another
-	POP	HL
-	POP	DE
-;
-PROC5:	LD	(HL),E		;SAVE "RETURN ADDRESS"
-	INC	HL
-	LD	A,(HL)
-	LD	(HL),D
-	CP	TON		;WAS IT "ON PROC" ?
-	JR	NZ,XEQGO
-	PUSH	DE
-	EX	(SP),IY
-	CALL	SPAN		;SKIP REST OF ON LIST
-	EX	(SP),IY
-	POP	DE
-	LD	(HL),D
-	DEC	HL
-	LD	(HL),E
-XEQGO:	JP	XEQ
+; --- INICIO DE PROCESAMIENTO DE UN PROCEDIMIENTO ---
+; Se entra aquí cuando el intérprete detecta el token de PROC.
+; AF viene con el flag de si es un "ON PROC" (para saltos múltiples).
+
+PROC:   PUSH    AF      ; Reserva espacio en la pila para el flag de ON
+        CALL    PROC1   ; Truco: llama a la siguiente línea para poner una dirección 
+                        ; de retorno en la pila que servirá de marcador.
+
+PROCHK  EQU $           ; Marcador de control (identifica una llamada PROC en la pila)
+PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack Overflow check)
+        DEC     IY      ; Retrocede el puntero de texto para leer el nombre del PROC
+        PUSH    IY      ; Guarda dónde estaba el programa antes de la llamada
+        CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
+        POP     BC      ; Recupera el puntero de texto original
+        JR      Z,PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
+
+        ; --- BÚSQUEDA DEL DEF PROC EN EL PROGRAMA ---
+        ; Si no está en el cache, hay que buscar "DEF PROCnombre" desde el principio
+        LD      A,30
+        JR      C,ERROR3    ; Si GETDEF dio error, "Bad call"
+        PUSH    BC          ; Guarda otra vez el puntero de texto
+        LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
+
+PROC2:  LD      A,TDEF      ; Token de "DEF"
+        CALL    SEARCH      ; Busca el siguiente "DEF" en la memoria
+        JR      C,PROC3     ; Si llega al final sin encontrarlo -> Error "No such PROC"
+        
+        PUSH    HL          ; Hemos encontrado UN "DEF", vamos a ver si es el nuestro
+        POP     IY          ; Ponemos IY en el DEF encontrado
+        INC     IY          ; Saltamos el token DEF
+        CALL    NXT         ; Lee lo que sigue (debería ser PROC)
+        CALL    GETDEF      ; Compara el nombre del DEF encontrado con el buscado
+        PUSH    IY
+        POP     DE
+        JR      C,PROC6     ; No coincide, seguimos buscando
+        
+        ; --- ENCONTRADO ---
+        CALL    NZ,CREATE   ; Si es nuevo, lo añade a la tabla de saltos para la próxima vez
+        PUSH    IY
+        POP     DE
+        LD      (HL),E      ; Guarda la dirección (LSB) en la tabla
+        INC     HL
+        LD      (HL),D      ; Guarda la dirección (MSB)
+        
+PROC6:  EX      DE,HL       ; Salta el resto de la línea para seguir buscando en la siguiente
+        LD      A,CR
+        LD      B,A
+        CPIR                ; Busca el final de línea (CR)
+        JR      PROC2       ; Bucle de búsqueda
+
+PROC3:  POP     IY          ; Si llegamos aquí y no estaba -> Error
+        CALL    GETDEF
+        LD      A,29
+        JR      NZ,ERROR3   ; "No such FN/PROC"
+
+; --- PREPARACIÓN PARA LA EJECUCIÓN ---
+PROC4:  LD      E,(HL)      ; HL tenía la dirección en la tabla, ahora DE tiene
+        INC     HL          ; la dirección real del código del procedimiento.
+        LD      D,(HL)      
+        LD      HL,2
+        ADD     HL,SP       ; Apunta HL a la dirección de retorno en la pila
+        CALL    NXT         ; Mira si después del nombre hay un '('
+        
+        PUSH    DE          ; Swap: IY ahora apunta al inicio del DEF PROC
+        EX      (SP),IY     ; y DE guarda el puntero de texto del programa principal
+        POP     DE
+
+        ; --- GESTIÓN DE PARÁMETROS (ARGUMENTOS) ---
+        CP      '('         ; ¿Tiene parámetros la llamada?
+        JP      NZ,PROC5    ; Si no, salta directo a ejecutar (PROC5)
+        
+        ; Hay parámetros: toca salvar variables locales y evaluar expresiones
+        CALL    NXT         ; Salta el '('
+        CP      '('         ; ¿Doble paréntesis? (Error sintaxis)
+        JP      NZ,SYNTAX   
+        
+        PUSH    IY
+        POP     BC          ; Salva el IY del procedimiento en BC
+        EXX                 ; Cambia al juego de registros alternativo
+        EX      AF,AF'
+        XOR     A           ; Contador de parámetros a 0
+        EX      AF,AF'
+        
+        CALL    SAVLOC      ; *** CRUCIAL ***: Guarda los valores actuales de las 
+                            ; variables que se van a usar como locales para restaurarlas luego.
+        
+        ; ... (Gestión de los RETURNs/paso por referencia) ...
+        ; Este bloque IX/SP reserva espacio en la pila para la tabla de variables locales.
+
+RETCHK: EX      AF,AF'      ; Verifica el cierre de paréntesis
+        CALL    BRAKET      ; Busca el ')'
+        EXX
+        PUSH    BC
+        POP     IY          ; Restaura IY al código del procedimiento
+        PUSH    HL          ; Salva el puntero de retorno
+        CALL    ARGUE       ; *** ASIGNA *** los valores evaluados a las variables locales.
+        POP     HL
+
+; --- EL "FIX" DE SEGURIDAD (BIT 4) ---
+; Russell aquí hace algo muy listo: si una variable se pasa por referencia (RETURN),
+; marca el tipo de variable en la pila (BIT 4) para que al hacer ENDPROC
+; NO se restaure el valor antiguo, permitiendo que el valor nuevo "vuelva" al programa.
+; [Aquí recorre la tabla de variables guardadas y las compara]
+
+PROC5:  LD      (HL),E      ; Guarda el "puntero de retorno" definitivo en la pila.
+        INC     HL
+        LD      A,(HL)      ; Comprueba si veníamos de un "ON PROC"
+        LD      (HL),D
+        CP      TON         
+        JR      NZ,XEQGO    ; Si es un PROC normal, ¡vamos a ejecutarlo!
+        
+        ; Si es ON PROC, hay que saltar el resto de la lista de nombres
+        PUSH    DE
+        EX      (SP),IY
+        CALL    SPAN        ; Salta la lista: PROC1, PROC2, PROC3...
+        EX      (SP),IY
+        POP     DE
+        LD      (HL),D
+        DEC     HL
+        LD      (HL),E
+
+XEQGO:  JP      XEQ         ; ¡SALTAMOS AL INTERPRETE PARA EJECUTAR EL DEF PROC!
+
 ;
 LOCERR:	INC	IY
 	JR	XEQGO
@@ -1940,7 +1871,7 @@ VDU:	CALL	EXPRI
 	EXX       
 	LD	A,L
 	LD	B,1   	
-VDU1:	CALL	OSWRCH_WITHOUT_READ
+VDU1:	CALL	WRITE_VDU
 	DJNZ	VDU1
 	LD	A,(IY)
 	CP	'|'
@@ -1950,7 +1881,7 @@ VDU1:	CALL	OSWRCH_WITHOUT_READ
 	CP	';'
 	JR	NZ,VDU3
 	LD	A,H
-	CALL	OSWRCH_WITHOUT_READ
+	CALL	WRITE_VDU
 VDU2:	INC	IY
 VDU3:	CALL	TERMQ
 	JR	NZ,VDU
@@ -2809,87 +2740,111 @@ RESLO5:	LD	HL,0
 ;           A' incremented for each RETURN
 ; Destroys: A',A,B,C,D,E,H,L,IX,IY,F,SP
 ;
-SAVLOC:	POP	DE		;RETURN ADDRESS
-SAVLO1:	INC	IY		;BUMP PAST ( OR ,
-	CALL	NXT
-	CP	TRETURN
-	JR	NZ,SAVLO6
-	EX	AF,AF'
-	INC	A		;RETURN counter
-	EX	AF,AF'
-	INC	IY		;Bump past RETURN
-	CALL	NXT
-SAVLO6:	PUSH	DE
-	EXX
-	PUSH	BC
-	PUSH	DE
-	PUSH	HL
-	EXX
-	CALL	VAR		;DUMMY VARIABLE
-	EXX
-	POP	HL
-	POP	DE
-	POP	BC
-	EXX
-	POP	DE
-	BIT	6,A		;ARRAY?
-	JR	NZ,SAVLO3
-	OR	A		;TYPE
-	JP	M,SAVLO2	;STRING
-	EXX
-	PUSH	HL		;SAVE H'L'
-	EXX
-	LD	B,A		;TYPE
-	CALL	LOADN
-	EXX
-	EX	(SP),HL
-	EXX
-	PUSH	HL
-	PUSH	BC
-	JR	SAVLO4
-;
-SAVLO3:	LD	C,(IX+0)	;ARRAY POINTER
-	LD	B,(IX+1)
-	PUSH	BC		;SAVE TO STACK
-	PUSH	AF		;SAVE TYPE
-	JR	SAVLO4
-;
-SAVLO2:	PUSH	AF		;STRING TYPE
-	PUSH	DE
-	EXX
-	PUSH	HL
-	EXX
-	CALL	LOADS
-	EXX
-	POP	HL
-	EXX
-	LD	C,E
-	POP	DE
-	CALL	CHECK
-	POP	AF		;LEVEL STACK
-	LD	HL,0
-	LD	B,L
-	SBC	HL,BC
-	ADD	HL,SP
-	LD	SP,HL
-	LD	B,A		;TYPE
-	PUSH	BC
-	JR	Z,SAVLO4
-	PUSH	DE
-	LD	DE,ACCS
-	EX	DE,HL
-	LD	B,L
-	LDIR			;SAVE STRING ON STACK
-	POP	DE
-SAVLO4:	PUSH	IX		;VARPTR
-	CALL	SAVLO5
-LOCCHK	EQU	$
-SAVLO5:	CALL	CHECK
-	CALL	NXT
-	CP	','		;MORE?
-	JR	Z,SAVLO1
-	EX	DE,HL
-	JP	(HL)		;"RETURN"
+; --- SAVLOC: SUBRUTINA PARA APILAR PARÁMETROS LOCALES ---
+; Esta rutina recorre la lista de variables dentro del paréntesis: (var1, var2...)
+
+SAVLOC: POP     DE          ; Saca la dirección de retorno (quién llamó a SAVLOC)
+SAVLO1: INC     IY          ; Salta el '(' o la ','
+        CALL    NXT         ; Lee el siguiente token
+        CP      TRETURN     ; ¿Es un parámetro pasado por referencia? (ej: RETURN a%)
+        JR      NZ,SAVLO6   ; Si no es RETURN, salta a procesar variable normal
+        
+        EX      AF,AF'      ; Si es RETURN:
+        INC     A           ; Incrementamos el contador de retornos en A'
+        EX      AF,AF'
+        INC     IY          ; Saltamos el token RETURN
+        CALL    NXT
+
+SAVLO6: PUSH    DE          ; Guarda la dirección de retorno de SAVLOC en la pila
+        EXX                 ; Cambia a registros alternativos para no perder nada
+        PUSH    BC          ; Salva todo el juego alternativo en la pila
+        PUSH    DE          ; porque VAR y LOADN los van a usar.
+        PUSH    HL
+        EXX
+        
+        CALL    VAR         ; *** BUSCA LA VARIABLE ***
+                            ; Devuelve en IX la dirección de la variable (VARPTR)
+                            ; y en A el tipo de variable.
+        
+        EXX                 ; Restaura registros alternativos
+        POP     HL
+        POP     DE
+        POP     BC
+        EXX
+        POP     DE          ; Recupera la dirección de retorno de SAVLOC
+
+        ; --- ANÁLISIS DE TIPO DE VARIABLE ---
+        BIT     6,A         ; ¿Es un Array? (Bit 6 set)
+        JR      NZ,SAVLO3   ; Si es Array, salta a su gestión especial
+
+        OR      A           ; Mira el tipo
+        JP      M,SAVLO2    ; Si el bit 7 está activo, es un STRING. Salta.
+
+        ; --- CASO: VARIABLE NUMÉRICA (Entero o Punto Flotante) ---
+        EXX
+        PUSH    HL          ; Salva registros H'L'
+        EXX
+        LD      B,A         ; B = Tipo
+        CALL    LOADN       ; Carga el valor numérico actual en el acumulador de FP
+        
+        EXX
+        EX      (SP),HL     ; Truco para intercambiar y salvar el valor en la pila
+        EXX
+        PUSH    HL          ; Apila el valor de la variable
+        PUSH    BC          ; Apila el tipo (B)
+        JR      SAVLO4      ; Va al cierre
+
+; --- CASO: ARRAYS ---
+SAVLO3: LD      C,(IX+0)    ; Los arrays no se copian enteros, solo su puntero
+        LD      B,(IX+1)    ; Lee la dirección del descriptor del array
+        PUSH    BC          ; Lo guarda en la pila
+        PUSH    AF          ; Guarda el tipo
+        JR      SAVLO4
+
+; --- CASO: STRINGS (Cadenas de caracteres) ---
+SAVLO2: PUSH    AF          ; Guarda el tipo de string
+        PUSH    DE          ; Guarda dirección de retorno
+        EXX
+        PUSH    HL
+        EXX
+        CALL    LOADS       ; Lee el string actual y lo pone en el buffer temporal (ACCS)
+        EXX
+        POP     HL
+        EXX
+        LD      C,E         ; C = Longitud del string
+        POP     DE
+        CALL    CHECK       ; Verifica que no desbordamos la pila
+        POP     AF          ; Recupera tipo
+        
+        ; Reservamos espacio en la pila para el texto del string
+        LD      HL,0
+        LD      B,L
+        SBC     HL,BC
+        ADD     HL,SP
+        LD      SP,HL       ; ¡Mueve el SP hacia abajo según la longitud del string!
+        
+        LD      B,A         ; B = Tipo
+        PUSH    BC          ; Apila el tipo
+        JR      Z,SAVLO4    ; Si el string mide 0, no hay nada que copiar
+        
+        PUSH    DE          ; Salva retorno
+        LD      DE,ACCS     ; Origen: Buffer de strings
+        EX      DE,HL
+        LD      B,L         ; (LDIR usa BC como contador, aquí C ya tiene la longitud)
+        LDIR                ; *** COPIA EL STRING LITERALMENTE A LA PILA ***
+        POP     DE
+
+; --- CIERRE DE CADA VARIABLE ---
+SAVLO4: PUSH    IX          ; *** IMPORTANTE ***: Apila el VARPTR (dónde vive la variable)
+        CALL    SAVLO5      ; Esto mete en la pila la dirección de LOCCHK (marcador)
+LOCCHK  EQU $               ; Esta etiqueta es el ID de "Variable Local en Pila"
+SAVLO5: CALL    CHECK       ; Verifica integridad
+        CALL    NXT         ; Mira si hay una coma ','
+        CP      ','
+        JR      Z,SAVLO1    ; Si hay coma, bucle para la siguiente variable
+        
+        EX      DE,HL       ; Ya no hay más variables
+        JP      (HL)        ; Vuelve a la dirección de retorno que teníamos en DE
 ;
 TERMQ:	CALL	NXT
 	CP	TELSE
