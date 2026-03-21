@@ -632,7 +632,7 @@ VDU_SUBR_LIST:		; VDU jump table
 	DEFW VDU22
 	DEFW VDU23
 	DEFW VDU24
-	DEFW VDU25_DRV ;VDU25 is already defined by the original code for BBC MICRO 
+	DEFW VDU25 
 	DEFW VDU26
 	DEFW VDU27
 	DEFW VDU28
@@ -650,8 +650,8 @@ VDU_CMD_W:
 	CP 0			; if not 0 read this byte is an argument 
 	JR NZ,VDU_READ_PARAMS_MODE
 	LD A,E  
-	;CP 32           ; else if the byte is ge to 31 it is not a VDU cmd
-	;JR NC, VDU_GWRITE
+	CP 32           ; else if the byte is ge to 31 it is not a VDU cmd
+	JR NC, GOSWRCH
 	LD HL,VDU_MODE	; else it is a VDU command
 	LD (HL),E       ; stores current command in VDU_MODE
 	LD HL,VDU_ARGV  ;
@@ -809,7 +809,7 @@ VDU18:
 	CP	8
 	JR	Z, COLOR_256 ;no palette in 256 mode
 	LD A,(VDU_ARGV)          ;Logical foreground color  byte
-	call findPhysicalColor
+	CALL findPhysicalColor
 	LD (IX),A
 	RET
 	COLOR_256:
@@ -931,7 +931,7 @@ VDU22:
 
 VDU23:RET
 VDU24:RET
-VDU25_DRV:
+VDU25:
 
 	;0 	Move relative to the last point.
 	;1 	Draw a line, in the current graphics foreground colour, relative to the last point.

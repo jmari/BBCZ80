@@ -149,11 +149,6 @@ BDOS_CALL:
 	POP	IY
 	POP	IX
 	RET
-VDU_GWRITE:
-	CALL	GOSWRCH
-	POP	IY
-	POP	IX
-	RET
 VDU_CMD:
 	LD A,E          
 	CP 0FFH         ; if the byte is FF it is requesting for a key input
@@ -189,43 +184,6 @@ WRITE_VDU:
 	POP AF
 	RET
 
-;GOSWRCH function: Writes a character to the standard output
-;		 Input: E is the character to print
-;destroys DE, AF'
-GOSWRCH:
-	LD 	   A,E  ; FOR CONVENIENCE WITH CPM CALL 
-	LD     DE, SCRMOD   
-	EX     AF,AF'
-	LD     A, (DE)      ; A = display mode
-	CP     2
-	JR     C,GOSWRCH_TEXMODE
-	EX     AF,AF'
-	LD     IX, GRPPRT
-	LD     IY,(EXPTBL-1)       ;BIOS slot in iy
-	CALL   CALSLT    
-	LD A,(GRPACY)
-	CP 208
-	CALL NC,VSCROLL    
-	JR EXIT_GOSWRCH
-GOSWRCH_TEXMODE:
-	EX     AF,AF'
-	LD     E, A     ; print one char in text mode 
-	;LD 	C,2 
-	CALL   CPM        ; call interslot subrutine
-EXIT_GOSWRCH:
-	RET
-
-VSCROLL:
-
-	LD A,(SCROLL_Y_POS)
-	ADD A,1
-	LD (SCROLL_Y_POS),A
-	LD  L,A
-	LD  H,97H  ;R23 CON BIT 7 A 1 PARA ESCRIBIR
-	CALL WRITE_VDP
-	LD A,0
-	LD (GRPACY), A
-	RET
 
 
 ;--------------------------------------VDU OPERATIONS--------------------------------------
@@ -458,7 +416,7 @@ LINE:	CALL	EXPRI
 	PUSH	BC
 	EX	DE,HL
 	LD	C,4
-	CALL	VDU25
+	CALL	VDU25_CMD
 	POP	DE
 	POP	HL
 	LD	C,5
@@ -484,7 +442,7 @@ CIRCL0:	CALL	EXPRI
 	LD	L,C
 	LD	H,B
 	LD	C,4		; PLOT 4 = MOVE
-	CALL	VDU25
+	CALL	VDU25_CMD
 	POP	DE		;r
 	LD	HL,0
         POP	AF
@@ -507,12 +465,12 @@ ELLIP0:	CALL	EXPRI
 	PUSH	BC
 	EX	DE,HL
 	LD	C,4		; PLOT 4 = Move absolute
-	CALL	VDU25
+	CALL	VDU25_CMD
 	POP	DE		;a
 	PUSH	DE
 	LD	HL,0
 	LD	C,L		; PLOT 0 - Move relative
-	CALL	VDU25
+	CALL	VDU25_CMD
         POP	DE		;a
 	XOR	A
 	LD	L,A
@@ -567,7 +525,7 @@ PLOT3:	PUSH	HL
 	EXX
 	POP	DE
 	POP	BC
-PLOT4:	CALL	VDU25
+PLOT4:	CALL	VDU25_CMD
 	JP	XEQ
 ;
 ;RECTANGLE [FILL] x,y,w[,h] [TO xnew,ynew]
@@ -596,7 +554,7 @@ RECT1:	POP	BC		;w
 	PUSH	BC
 	EX	DE,HL
 	LD	C,4
-	CALL	VDU25
+	CALL	VDU25_CMD
 	LD	A,(IY)
 	CP	TTO
 	JR	Z,RECTTO
@@ -620,7 +578,7 @@ RECTTO:	INC	IY		; Bump over TO
 	EX	(SP),HL		;HL <- h, (SP) <- newy
 	PUSH	BC
 	LD	C,0
-	CALL	VDU25
+	CALL	VDU25_CMD
 	POP	DE		;newx
 	POP	HL		;newy
 	POP	AF
@@ -634,11 +592,11 @@ PLOT4B:	JR	PLOT4
 OUTLIN:	LD	C,9		; PLOT 9 - draw relative
 	PUSH	HL
 	LD	HL,0
-	CALL	VDU25		; side 1
+	CALL	VDU25_CMD		; side 1
 	POP	HL
 	PUSH	DE
 	LD	DE,0
-	CALL	VDU25		; side 2
+	CALL	VDU25_CMD		; side 2
 	POP	DE
 	PUSH	HL
 	XOR	A
@@ -648,7 +606,7 @@ OUTLIN:	LD	C,9		; PLOT 9 - draw relative
 	EX	DE,HL
 	LD	L,A
 	LD	H,A
-	CALL 	VDU25		; side 3
+	CALL 	VDU25_CMD		; side 3
 	POP	DE
 	XOR	A
 	LD	L,A
@@ -720,7 +678,7 @@ WAIT1:	CALL	TRAP
 	JR	WAIT1
 
 
-VDU25:	LD	B,25
+VDU25_CMD:	LD	B,25
 	WRCH6:	LD	A,B
 		CALL	WRITE_VDU
 	WRCH5:	LD	A,C
@@ -733,8 +691,8 @@ VDU25:	LD	B,25
 		CALL	WRITE_VDU
 		LD	A,H
 		JP	WRITE_VDU
-	;
-	EXPR3:	CALL	CEXPRI
+;
+EXPR3:	CALL	CEXPRI
 		EXX
 		PUSH	HL
 		CALL	CEXPRI
