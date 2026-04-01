@@ -82,10 +82,6 @@
 	;
 	CPM	EQU	5
 	; --- MSX DOS SUBROUTINES
-	BDOS_GET_DATE    EQU 2AH 	;get date
-	BDOS_SET_DATE    EQU 2BH 	;set date
-	BDOS_GET_TIME    EQU 2CH 	;get time
-	BDOS_SET_TIME    EQU 2DH 	;set time
 	BDOS_CONSOLE_OUTPUT EQU 02H
 
 	; --- KEYS ---
@@ -651,7 +647,7 @@ VDU_CMD_W:
 	JR NZ,VDU_READ_PARAMS_MODE
 	LD A,E  
 	CP 32           ; else if the byte is ge to 31 it is not a VDU cmd
-	JR NC, GOSWRCH
+	JP NC, GOSWRCH
 	LD HL,VDU_MODE	; else it is a VDU command
 	LD (HL),E       ; stores current command in VDU_MODE
 	LD HL,VDU_ARGV  ;

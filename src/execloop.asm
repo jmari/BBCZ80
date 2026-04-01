@@ -7,7 +7,7 @@
     PUBLIC  XEQ1
     PUBLIC  END
 
-    EXTERN GET_FREE_SEGMENT         ;MAPPER.ASM
+    EXTERN ALLOCATE_SEGMENT         ;MAPPER.ASM
     EXTERN SELECT_SEGMENT_P2        ;MAPPER.ASM
     EXTERN GET_CURRENT_SEGMENT_P2   ;MAPPER.ASM
     ;-------------------------------------------
@@ -130,8 +130,8 @@ INSTALL:
 
     CALL GET_CURRENT_SEGMENT_P2
     PUSH AF             ;Guarda el segmento activo en la pila
-    
-    CALL GET_FREE_SEGMENT
+    XOR A               ;RAM DE USUARIO
+    CALL ALLOCATE_SEGMENT
     ; A = Segmento, B = Slot (o Carry si error)
     JP  C,_ERROR ;no room
     ; --- SELECCIONA UN SEGMENTO DE 16k LIBRE ---

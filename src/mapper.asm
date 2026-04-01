@@ -1,5 +1,5 @@
     PUBLIC INIT_MAPPER_POINTERS
-    PUBLIC GET_FREE_SEGMENT
+    PUBLIC ALLOCATE_SEGMENT
     PUBLIC SELECT_SEGMENT_P2
     PUBLIC GET_CURRENT_SEGMENT_P2
     
@@ -16,6 +16,7 @@
 ALL_SEG_OFFSET    EQU 0 
 PUT_P2_OFFSET     EQU 24h      ; Put Physical (Pon segmento A en página de HL)
 GET_P2_OFFSET     EQU 27h      ; Get Physical (Lee segmento de página de HL en A)
+
 
 
 ; --- DEFINICIONES ---
@@ -69,15 +70,13 @@ NO_MAPPER:
     RET
 
 ; ---------------------------------------------------------
-; RUTINA: GET_FREE_SEGMENT
+; RUTINA: ALLOCATE_SEGMENT
 ; Retorna: A = Segmento reservado, B = Slot
 ;          Carry Set = Error (No hay memoria)
 ; ---------------------------------------------------------
-GET_FREE_SEGMENT:
-    ; 1. Configurar parámetros para ALL_SEG
-    XOR  A                  ; A = 0 (Pedimos RAM de Usuario)
-    LD   B, A               ; B = 0 (En el Mapper Primario)
-    
+ALLOCATE_SEGMENT:
+    ; 1. Configurar parámetros para ALL_SEG              
+    LD   B, 0       ; B = 0 (En el Mapper Primario)
     ; 2. Preparar el salto
     LD   DE, ALL_SEG_OFFSET
     
@@ -88,9 +87,11 @@ GET_FREE_SEGMENT:
     ; 4. Ejecución
     ; Usamos JP (HL) para saltar a la tabla.
     ; La tabla salta a la rutina del DOS.
-    ; La rutina del DOS hará un RET, que volverá a quien llamó a GET_FREE_SEGMENT.
+    ; La rutina del DOS hará un RET, que volverá a quien llamó a ALLOCATE_SEGMENT.
     JP   (HL)
 
+
+    
 ; -----------------------------------------------------------------------------
 ; RUTINA: SELECT_SEGMENT_P2
 ; -----------------------------------------------------------------------------

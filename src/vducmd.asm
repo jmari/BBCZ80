@@ -37,6 +37,11 @@ VDU_DEVICE_ID EQU 150
  	POSIT		EQU  	00C6h		;Function: 	Moves the cursor
 									;Input: 	H = X-coordinate of the cursor, L for the Y-coordinate
 									;Output: 	None
+; --- MSX DOS SUBROUTINES
+	BDOS_GET_DATE    EQU 2AH 	;get date
+	BDOS_SET_DATE    EQU 2BH 	;set date
+	BDOS_GET_TIME    EQU 2CH 	;get time
+	BDOS_SET_TIME    EQU 2DH 	;set time
 ; ---------MSX ROM BIOS VARS
 	FORCLR 		EQU		0F3E9h 	 	;Foreground color
 	BAKCLR 		EQU 	0F3EAh		;backgroud color
@@ -52,8 +57,8 @@ VDU_DEVICE_ID EQU 150
     SCRMOD      EQU     0FCAFh      ; Current Screen mode
 	LINL40		EQU		0F3AEh
 
-
-
+; MSX HOOKS
+	EXTBIO           EQU 0FFCAh    ; Vector de salto a la Extended BIOS
 ;***************************************************************************************
 
 	SCROLL_Y_POS: DEFB 00H
@@ -111,7 +116,8 @@ TBY	EQU	0FH
 TTO	EQU	0B8H
 TFILL	EQU	03H
 ;
-
+SCRAP:	DEFS	31
+	DEFB	0
 
 ;...
 BDOS0:	PUSH	BC
@@ -185,8 +191,265 @@ WRITE_VDU:
 	RET
 
 
+;-----------------------------RT CLOCK ---------------------------------------------------
+
+;----READY----
+;GETIMS	- Read real-time clock as string.
+;  	  Outputs:  TIME$ in string accumulator
+;                   E = string length (25)
+; 	  Destroys: A,B,C,D,E,H,L,F
+;
+;USES Function STR - convert numeric value to ASCII string.
+;   Inputs: HLH'L'C = integer or floating-point number
+;           DE = address at which to store string
+;           IX = address of @% format control
+;    LD	    A,37
+;    CALL    FPP		  ;STR          ; HLH'L' 
+;THIS IS A VERY LONG IMPLEMENTATION BECAUSE MSX BIOS HAS NOTHING 
+;LIKE STRING REPRESENTATION ALMOST AS A BDOS SUBRUTINE (mybe basic rom has something closer)
+DAY_OF_WEEK:	DEFM	"Sun.Mon.Tue.Wed.Thu.Fri.Sat." ; four chars per day
+DAYFORMAT:	    DEFM	"@00" 
+MONTHS:	DEFM	"Jan Feb Mar Apr May Jun Jul Ago Sep Oct Nov Dec" ; four chars per month
+YEARFORMAT:	    DEFM	"@00"
+
+GETIMS:	
+	LD	HL,SCRAP
+	LD	(HL),0
+    LD	C,BDOS_GET_DATE
+    CALL  BDOS
+    ;HL register ⟵ year
+    ;D register ⟵ month
+    ;E register ⟵ day of month
+    ;A register ⟵ day of week
+    PUSH HL
+    PUSH DE
+
+    LD HL, DAY_OF_WEEK
+    RLCA   ;*2
+    RLCA   ;*4
+    LD C,A
+    LD B,0
+    ADD HL,BC
+    LD  DE, SCRAP
+    LD A,(HL)           ;copy four chars (day) from DAY_OF_WEEK+A to SCRAP
+    LD (DE),A
+    INC HL
+    INC DE
+    LD A,(HL)
+    LD (DE),A
+    INC HL
+    INC DE
+    LD A,(HL)
+    LD (DE),A
+    INC HL
+    INC DE
+    LD A,(HL)
+    LD (DE),A           ;now scrap is "Day."
+
+    INC DE
+    LD HL,SP
+    LD A,(HL)
+    CP 9
+    JR NC, LENGTH2  ; Salta si A < 9 (Si Carry=1). Si NO salta, sabemos que A >= 9.
+    LD A,'0'
+    LD (DE),A           ;now scrap is "Day. 0"
+    INC DE    
+;
+;   Convert day of month to format dd  
+LENGTH2:
+    EXX
+    POP HL              ;DE (month,day of month) was in the pile so now H is month and L is day of month
+    LD A,L
+    PUSH HL
+    LD H,0
+    EXX
+    PUSH DE             ;Store DE
+    LD HL,0
+    LD C,0
+    ;DE points to scrap next address
+    LD IX, DAYFORMAT   ;leading 0 dd format 
+    LD	    A,37
+    CALL    FPP		   ;STR          ; HLH'L'C stores the number (C=0 means number is Integer)
+    POP DE
+    INC DE 
+    INC DE 
+    LD A,' '
+    LD (DE),A           ;now scrap is "Day.dd "
+    INC DE
+;now month
+    POP HL              ; H is month and L is day of month
+    LD A,H
+    LD HL, MONTHS
+    RLCA ;a*2
+    RLCA ;a*4
+    LD C,A
+    LD B,0
+    ADD HL,BC
+    LD A,(HL)           ;copy four chars (day) from MONTHS+A to SCRAP
+    LD (DE),A
+    INC HL
+    INC DE
+    LD A,(HL)
+    LD (DE),A
+    INC HL
+    INC DE
+    LD A,(HL)
+    LD (DE),A
+    INC HL
+    INC DE
+    LD A,(HL)
+    LD (DE),A           
+    INC DE ;now scrap is "Day.dd Mon "
+    
+;now the year
+    EXX
+    POP HL              ;year was in the pile
+    EXX
+    LD HL,0
+    LD C,0
+    LD IX, YEARFORMAT   ;leading 0 dd format 
+    LD	    A,37
+    PUSH DE
+    CALL    FPP		   ;STR          ; HLH'L'C stores the number (C=0 means number is Integer)
+    POP DE
+    INC DE
+    INC DE
+    INC DE
+    INC DE
+    LD A,','
+    LD (DE),A           ;now scrap is "Day.dd Mon yyyy,"
+  
+; now the time hh:mm:ss----------------------------------------
+    LD	C,BDOS_GET_TIME
+    CALL  BDOS
+    ;H register ⟵ hour
+    ;L register ⟵ minute
+    ;D register ⟵ second
+    ;E register ⟵ 1/100 second
+    PUSH DE
+    PUSH HL
+
+    LD DE, SCRAP + 17
+    PUSH DE
+    LD A,H
+    CP 9
+    JR NC, LENGTH21  ; Salta si A < 9 (Si Carry=1). Si NO salta, sabemos que A >= 9.
+    ;   Convert h to format hh 
+    POP DE
+    LD A,'0'
+    LD (DE),A         
+    INC DE
+    PUSH DE
+
+LENGTH21:
+    LD L,H 
+    LD H,0
+    EXX
+    LD HL,0
+    POP DE
+    LD C,0
+    LD IX, DAYFORMAT   ;leading 0 dd format 
+    LD	    A,37
+    CALL    FPP		   ;STR          ; HLH'L'C stores the number (C=0 means number is Integer)
+    INC DE
+    LD A,':'
+    LD (DE),A
+    
+;-----mm----------------------------------------
+    POP HL
+    LD DE, SCRAP + 21
+    PUSH DE
+    LD A,L
+    CP 9
+    JR NC, LENGTH22  ; Salta si A < 9 (Si Carry=1). Si NO salta, sabemos que A >= 9.
+    POP DE
+    ;   Convert m to format mm 
+    LD A,'0'
+    LD (DE),A  
+    INC DE   
+    PUSH DE
+
+LENGTH22:
+    LD H,0
+    EXX
+    LD HL,0
+    POP DE
+    LD HL,0
+    LD C,0
+    LD IX, DAYFORMAT   ;leading 0 dd format 
+    LD	    A,37
+    CALL    FPP		   ;STR          ; HLH'L'C stores the number (C=0 means number is Integer)
+    LD DE, SCRAP + 23
+    LD A,':'
+    LD (DE),A
+;-----ss----------------------------------------
+    POP HL ; hl is de (seconds and csec)
+    LD DE, SCRAP + 24
+    PUSH DE
+    LD A,H
+    CP 9
+    JR NC, LENGTH23  ; Salta si A < 9 (Si Carry=1). Si NO salta, sabemos que A >= 9.
+    ;   Convert s to format ss 
+    POP DE
+    LD A,'0'
+    LD (DE),A         
+    INC DE
+    PUSH DE
+
+LENGTH23:
+    LD L,H
+    LD H,0
+    EXX
+    LD HL,0
+    POP DE
+    LD C,0
+    LD IX, DAYFORMAT   ;leading 0 dd format 
+    LD	    A,37
+    CALL    FPP		   ;STR          ; HLH'L'C stores the number (C=0 means number is Integer)
+
+    LD DE, SCRAP + 26
+    LD (DE),0
+	LD	HL,SCRAP
+	LD	DE,ACCS
+	LD	A,(HL)
+	CP	E
+	RET	Z
+	LD	BC,26
+	LDIR
+	RET
+
+;
+;PUTIMS	- Wtite real-time clock as string.
+;  	  Inputs:   string in string accumulator
+;                   E = string length
+; 	  Destroys: A,B,C,D,E,H,L,F
+;
+PUTIMS:	LD	A,E		;Length
+	CP	26
+	RET	NC
+	LD	B,0
+	LD	C,A
+	LD	DE,SCRAP+1
+	LD	HL,ACCS
+	LDIR
+	LD	HL,SCRAP
+	LD	(HL),A
+	LD	A,15
+	JP	OSWORD
 
 ;--------------------------------------VDU OPERATIONS--------------------------------------
+;
+;PCSR	- Move cursor to specified position.
+;   	  Inputs: DE = horizontal position (LHS=0)
+;                 HL = vertical position (TOP=0)
+; 	  Destroys: A,D,E,H,L,F
+;
+PCSR:
+
+		LD	A,27
+		CALL	WRITE_VDU
+		JP WRCH4
+
 
 ;POINT - var=POINT(x,y)
 ; read the color of the pixel xy

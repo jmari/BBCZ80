@@ -1,13 +1,14 @@
     PUBLIC MAPPER_JUMP_TABLE
     PUBLIC MAIN_SEGMENT
     EXTERN INIT_MAPPER_POINTERS
-    EXTERN GET_FREE_SEGMENT
+    EXTERN ALLOCATE_SEGMENT
     EXTERN SELECT_SEGMENT_P2
     EXTERN GET_CURRENT_SEGMENT_P2
 
 ; --- CONSTANTS ---
 P02             EQU 8000h
 MAXBYTES        EQU 4000h 
+TRAMPOLINE_DEST EQU 0F87Fh  ; this is function key definitionarea....we use to keep the trampoline
 EXTBIOS_HOOK    EQU 0FFCAh  ; System Hook for Extended BIOS (ADDRESS) 
 
 ; --- MSX-DOS 2 FUNCTIONS ---
@@ -17,18 +18,50 @@ _CLOSE          EQU 45h
 _TERM           EQU 00h
 DOS2            EQU 0005h    
 
-; --- DRIVER HEADER OFFSETS (Matches your relocatable driver) ---
-DRV_MAPPER_PTR  EQU 2       ; MAPPER_JUMP_TABLE (DEFW)
-DRV_MAIN_SEG    EQU 4       ; MAIN_SEGMENT (DEFB)
-DRV_DEV_SEG     EQU 5       ; DEVICE_RAM_SEGMENT (DEFB)
-DRV_OLD_EXT     EQU 6       ; OLD_EXTBIOS_STUB (5 BYTES)
-DRV_MY_ADDR     EQU 11       ; MY_ADDRESS (DEFW)
-DRV_SIZE        EQU 13      ; DRV_SIZE (DEFW)
-PATCH_FUNCTION  EQU 17      ; PATCH FUNCTION
+
+; --- DRIVER HEADER OFFSETS  ---
+DEVICE_ID       EQU 8002h      ; DEVICE ID 
+
+CALLS           EQU 0Fh      ; Interslot call
 
     ORG 100H
     JP DRIVER_LOAD
 
+;------------------------TRAMPOLINE DEFINITION---------------------------------
+    ; D is device ID
+    ; E is function ID
+TRAMPOLINE: 
+    JR START_TRAMPOLINE
+    OLD_STUB_CODE:       DEFM 0C9h,0C9h,0C9h,0C9h,0C9h          ; +6 (Old STUB)
+START_TRAMPOLINE:
+    PUSH IX
+    PUSH DE
+    PUSH AF
+    LD   A, D
+_PATCH_DEVICEID:
+    CP   00h
+    JR   NZ, NEXT_DEVICE  
+    POP AF
+    POP DE       ;D is deviceid and E = function
+_PATCH_MAPPERTABLE:
+    CALL 0000h 
+  
+_PATCH_SEGMENT:
+    DB   03h       ; Tu número de segmento PATCH_SEGMENT
+    DW   P02       ; La dirección de destino
+    POP  IX
+    RET
+NEXT_DEVICE:
+    POP  AF                 ; Restore AF from the very beginning
+    POP  DE
+    POP  IX
+    JR OLD_STUB_CODE
+END_OF_TRAMPOLINE:
+;-----------------------------END OF TRAMPOLINE DEFINITION---------------------------
+
+
+
+;-----------------------------START OF DRIVER LOADER---------------------------------
 ; --- MAPPER SUPPORT DATA ---
 MAPPER_JUMP_TABLE:  DEFW 0000h
 MAIN_SEGMENT:       DEFB 00h
@@ -40,7 +73,7 @@ DRIVER_FILE_NAME:   DEFS 64, 0   ; Buffer for ASCIIZ filename
 FILE_HANDLE:        DEFB 0
 
 ; --- MESSAGES ---
-ERR_USAGE_MSG:      DEFM "Usage: LDEXT.COM <filename.bin>", 13, 10, "$"
+ERR_USAGE_MSG:      DEFM "Usage: LD <filename.lib>", 13, 10, "$"
 OK_MSG:             DEFM "Driver successfully loaded at Page 2", 13, 10, "$"
 ERR_OPEN_MSG:       DEFM "Error: File not found", 13, 10, "$"
 ERR_READ_MSG:       DEFM "Error: Disk read failure", 13, 10, "$"
@@ -108,9 +141,8 @@ DRIVER_LOAD:
     ; Get current segment to restore it later
     CALL GET_CURRENT_SEGMENT_P2
     PUSH AF                 
-    
-    ; Request a free 16KB segment
-    CALL GET_FREE_SEGMENT
+    LD    A,1    ; Request a free 16KB SYSTEM segment
+    CALL ALLOCATE_SEGMENT
     LD   DE, ERR_MAPPER_MSG
     JP   C, FATAL_ERROR
     LD   (DEVICE_RAM_SEGMENT), A 
@@ -123,62 +155,49 @@ DRIVER_LOAD:
     JP   C, FATAL_ERROR  
 
     ; --- SETUP DRIVER HEADER ---
-    LD   IX, P02                            ; IX points to loaded driver
-    
+    LD   IX, OLD_STUB_CODE                  ; IX points to trampoline section
     LD   HL, (EXTBIOS_HOOK)                 ; Read current hook code (5 bytes)
-    LD   (IX + DRV_OLD_EXT), HL             ; Store it for chaining
-    LD   HL, (EXTBIOS_HOOK+2)               ; Read current hook address
-    LD   (IX + DRV_OLD_EXT+2), HL           ; Store it for chaining
-    LD   A, (EXTBIOS_HOOK +5)
-    LD   (IX + DRV_OLD_EXT+5), A                 
+    LD   (IX), HL                           ; Store it for chaining
+    LD   HL, (EXTBIOS_HOOK + 2)               ; Read current hook address
+    LD   (IX + 2), HL                         ; Store it for chaining
+    LD   A, (EXTBIOS_HOOK + 4)               ; and the 5th byte (starting by 0)
+    LD   (IX + 4), A                 
 
-
-    LD   HL, (MAPPER_JUMP_TABLE)  
-    LD   (IX + DRV_MAPPER_PTR), HL
-    
-    LD   A, (MAIN_SEGMENT)  
-    LD   (IX + DRV_MAIN_SEG), A
-    
+    ; PATCH TRAMPOLINE
+    LD   IX, _PATCH_MAPPERTABLE             ; IX points to trampoline section
+    LD   HL, (MAPPER_JUMP_TABLE)           
+    ADD  HL, CALLS
+    LD   (IX + 1), HL                       ; +1 opcode
+    LD   A, (DEVICE_ID)  
+    LD   IX , _PATCH_DEVICEID
+    LD   (IX + 1), A   
     LD   A, (DEVICE_RAM_SEGMENT)  
-    LD   (IX + DRV_DEV_SEG), A
+    LD   IX , _PATCH_SEGMENT
+    LD   (IX), A  
 
     ; --- CALCULATE DESTINATION (TOP OF STACK) ---
-    DI
-    LD   HL, SP                             ; Use current Stack Pointer as ceiling
-    LD   DE, (IX + DRV_SIZE)                ; Get driver size from header
-    LD   BC, DE                             ; BC = Size for LDIR
     
+    LD   DE, END_OF_TRAMPOLINE - TRAMPOLINE                ; Get driver size from header
+    LD   BC, DE                             ; BC = Size for LDIR
     OR   A                                  ; <--- ¡NUEVO! Limpia el Carry Flag
-    SBC  HL, DE                             ; Ahora HL = HL - DE (sin errores)
-  
-    LD   (EXTBIOS_HOOK+1), HL                 ; Update system hook to point to driver
-    LD   (IX + DRV_MY_ADDR), HL             ; Tell driver its own new address
+    LD   DE, TRAMPOLINE_DEST                ; Ahora HL = HL - DE 
+    DI
+    LD   (EXTBIOS_HOOK+1), DE               ; Update system hook to point to trampoline address
     ; --- RELOCATE DRIVER ---
-        
-    CALL P02 + PATCH_FUNCTION
-    EX   DE, HL                             ; DE = New destination (RAM High)
-    LD   A, 0C3h                            ; HL = Source (8000h)
+    LD   A, 0C3h                            ; jp DE = dest (trampoline))
     LD   (EXTBIOS_HOOK), A
-    LD   HL, P02                            ; HL = Source (8000h)
+    LD   HL, TRAMPOLINE                     ; HL = Source (trampoline)
     LDIR                                    ; Copy driver to its permanent home
-
     ; --- RESTORE STATE AND CLEANUP ---
     POP  AF                                 ; Recuperamos el segmento original (estaba en la pila vieja)
-    POP  DE                                 ; Recuperamos la dirección de retorno a DOS/BASIC en DE
-    
-    ; Ahora movemos la pila para proteger el driver
-    LD   HL, (IX + DRV_MY_ADDR)             ; HL = Dirección base donde acabamos de copiar el driver
-    LD   SP, HL                             ; ¡Instrucción válida! SP ahora apunta justo debajo del driver
-    PUSH DE                                 ; Metemos la dirección de retorno en la NUEVA pila
     CALL SELECT_SEGMENT_P2                  ; Restauramos el segmento original en Página 2
     EI
-    
     LD   DE, OK_MSG
     LD   C, 09h
     CALL DOS2
     LD   B, 0               ; Código de error 0 (Todo OK)
     LD   C, 62h             ; _TERM (Terminate with return code)
-    CALL DOS2              ; ¡Adiós! El DOS reajusta todo y sale al prompt.     
+    CALL DOS2               ; ¡Adiós! El DOS reajusta todo y sale al prompt.     
 FATAL_ERROR:
     POP  AF                                 ; Clean stack (A = Original Segment)
     CALL SELECT_SEGMENT_P2                  ; <--- ¡NUEVO! Restaurar P2 antes de salir
