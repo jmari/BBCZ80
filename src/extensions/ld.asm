@@ -8,7 +8,9 @@
 ; --- CONSTANTS ---
 P02             EQU 8000h
 MAXBYTES        EQU 4000h 
-TRAMPOLINE_DEST EQU 0F87Fh  ; this is function key definitionarea....we use to keep the trampoline
+TRAMPOLINE_DEST EQU 0F55EH  ; BUF (F55EH, 258)
+                            ; contents:	buffer to store characters typed; where direct statements
+		                    ; are stored in ASCII code...we use to keep the trampolines
 EXTBIOS_HOOK    EQU 0FFCAh  ; System Hook for Extended BIOS (ADDRESS) 
 
 ; --- MSX-DOS 2 FUNCTIONS ---

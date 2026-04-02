@@ -140,10 +140,6 @@ INSTALL:
     ; --- PARTE 2: Limpieza de Pila y Carga ---  
   
     CALL INITIALIZE_SEGMENT_CONTEXT
-    ;LD  IX,0
-    ;ADD IX,SP
-    ;LD  (START_OF_P2 + USER - ACCS + 1),IX
-
     CALL LOAD0       ; Carga el archivo desde disco/dispositivo a la dirección PAGE
     ;JR force_fin
     ; --- PARTE 4: El punto crítico del Heap ---
