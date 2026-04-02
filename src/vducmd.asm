@@ -445,10 +445,10 @@ PUTIMS:	LD	A,E		;Length
 ; 	  Destroys: A,D,E,H,L,F
 ;
 PCSR:
-
-		LD	A,27
+		LD	A,31
 		CALL	WRITE_VDU
-		JP WRCH4
+		JP	WRCH4   ;writes the vdu command  and choords
+		
 
 
 ;POINT - var=POINT(x,y)

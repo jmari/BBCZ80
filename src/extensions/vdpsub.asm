@@ -838,8 +838,6 @@ __do_swap:
 ; 	  Destroys: A,D,E,H,L,F
 ;
 PCSR:
-	PUSH IX
-	PUSH IY
 	LD A,E
 	LD (CSRXTP),A
 	LD A,L	
@@ -870,8 +868,6 @@ PCSR_CARRY:
 	LD (HL), 0  ; 0fCB4   ;no se para que sirve
 	dec HL
 	LD (HL), 0  ; 0fCB3   ;no se para que sirve	
-	POP IY
-	POP IX
 	RET
 	
 
