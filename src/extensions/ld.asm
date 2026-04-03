@@ -8,9 +8,10 @@
 ; --- CONSTANTS ---
 P02             EQU 8000h
 MAXBYTES        EQU 4000h 
-TRAMPOLINE_DEST EQU 0F55EH  ; BUF (F55EH, 258)
+TRAMPOLINE_DEST EQU 0F41FH  ; KBUF (F41FH, 318)
                             ; contents:	buffer to store characters typed; where direct statements
 		                    ; are stored in ASCII code...we use to keep the trampolines
+NUMBER_OF_ALLOCATED_DRV EQU 0F55Ch ;last byte used in Basic we use it to stone the number of trampolines.
 EXTBIOS_HOOK    EQU 0FFCAh  ; System Hook for Extended BIOS (ADDRESS) 
 
 ; --- MSX-DOS 2 FUNCTIONS ---
@@ -178,17 +179,32 @@ DRIVER_LOAD:
     LD   (IX), A  
 
     ; --- CALCULATE DESTINATION (TOP OF STACK) ---
-    
-    LD   DE, END_OF_TRAMPOLINE - TRAMPOLINE                ; Get driver size from header
-    LD   BC, DE                             ; BC = Size for LDIR
-    OR   A                                  ; <--- ¡NUEVO! Limpia el Carry Flag
+    ; TODO-CALCULATE THE DESTINATION DEPENDING ON THE NUMBER OF INSTALLED TRAMPOLINES
+    ; store in NUMBER_OF_ALLOCATED_DRV
+    LD   BC, END_OF_TRAMPOLINE - TRAMPOLINE                ; Get driver size from header
+                                                           ; BC = Size for LDIR
     LD   DE, TRAMPOLINE_DEST                ; Ahora HL = HL - DE 
+    LD   HL, (NUMBER_OF_ALLOCATED_DRV)
+ _NEXT_DRIVER:
+    INC  L
+    DEC  L
+    JR   Z,_CONTINUE
+    LD   A , C 
+    ADD  DE, A
+    DEC  L
+    JR   NZ,_NEXT_DRIVER
+_CONTINUE:
+    OR   A                                  ; <--- ¡NUEVO! Limpia el Carry Flag
     DI
     LD   (EXTBIOS_HOOK+1), DE               ; Update system hook to point to trampoline address
     ; --- RELOCATE DRIVER ---
     LD   A, 0C3h                            ; jp DE = dest (trampoline))
     LD   (EXTBIOS_HOOK), A
     LD   HL, TRAMPOLINE                     ; HL = Source (trampoline)
+    LD   BC, (NUMBER_OF_ALLOCATED_DRV)
+    INC  BC 
+    LD   (NUMBER_OF_ALLOCATED_DRV),BC
+    LD   BC, END_OF_TRAMPOLINE - TRAMPOLINE ; BC has the size
     LDIR                                    ; Copy driver to its permanent home
     ; --- RESTORE STATE AND CLEANUP ---
     POP  AF                                 ; Recuperamos el segmento original (estaba en la pila vieja)
