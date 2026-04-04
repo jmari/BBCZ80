@@ -600,7 +600,7 @@ VDU_ARGC_LIST:      ; VDU number of arguments table
 	DEFB    4 ;VDU 28 defines a text window. 
 	DEFB    2*2 ;VDU 29 moves the graphics origin to the coordinates specified by the following two words (
 	DEFB    0 ;VDU 30 homes the text cursor to the top left corner of the text window. In VDU 5 mode, VDU 30 homes the graphics cursor to the top left corner of the graphics window. 
-	DEFB    4 ;VDU 31 is identical to PRINT TAB(x,y). It positions the text cursor according to the following two bytes. 
+	DEFB    2 ;VDU 31 is identical to PRINT TAB(x,y). It positions the text cursor according to the following two bytes. 
 	DEFB    0 ;VDU 127 Delete the character to the left of the cursor and backspace the cursor and all the characters on the line to the right of the cursor.
 VDU_SUBR_LIST:		; VDU jump table
 	DEFW VDU0
@@ -1272,13 +1272,11 @@ VDU29:
 VDU30:RET
 VDU31:
 	LD A,(VDU_ARGV)
-	LD H,A
+	LD H,0
+	LD L,A
 	LD A,(VDU_ARGV+1)
-	LD L,A                 ;HL HAS Y COORD
-	LD A,(VDU_ARGV+2)
-	LD D,A
-	LD A,(VDU_ARGV+3)
-	LD E,A                 ;DE HAS X COORD         
+	LD D,0                ;HL HAS Y COORD
+	LD E,A                ;DE HAS X COORD         
 	CALL PCSR
 	RET
 VDU127:RET

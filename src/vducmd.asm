@@ -447,8 +447,11 @@ PUTIMS:	LD	A,E		;Length
 PCSR:
 		LD	A,31
 		CALL	WRITE_VDU
-		JP	WRCH4   ;writes the vdu command  and choords
-		
+		LD	A,E   
+		CALL	WRITE_VDU
+		LD	A,L
+		JP		WRITE_VDU  ;writes the vdu command  and choords
+		JP  EXPR3 ;I DON KNOW WHY CALLING EXPR3 ANYWAY WORKS......
 
 
 ;POINT - var=POINT(x,y)

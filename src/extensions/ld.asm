@@ -8,11 +8,11 @@
 ; --- CONSTANTS ---
 P02             EQU 8000h
 MAXBYTES        EQU 4000h 
-TRAMPOLINE_DEST EQU 0F41FH  ; KBUF (F41FH, 318)
+TRAMPOLINE_DEST EQU  0F41FH  ; KBUF (F41FH, 318)
                             ; contents:	buffer to store characters typed; where direct statements
 		                    ; are stored in ASCII code...we use to keep the trampolines
-NUMBER_OF_ALLOCATED_DRV EQU 0F55Ch ;last byte used in Basic we use it to stone the number of trampolines.
-EXTBIOS_HOOK    EQU 0FFCAh  ; System Hook for Extended BIOS (ADDRESS) 
+NUMBER_OF_ALLOCATED_DRV EQU  0F55Ch ;last byte used in Basic we use it to stone the number of trampolines.
+EXTBIOS_HOOK    EQU  0FFCAh  ; System Hook for Extended BIOS (ADDRESS) 
 
 ; --- MSX-DOS 2 FUNCTIONS ---
 _OPEN           EQU 43h
@@ -38,6 +38,7 @@ TRAMPOLINE:
     OLD_STUB_CODE:       DEFM 0C9h,0C9h,0C9h,0C9h,0C9h          ; +6 (Old STUB)
 START_TRAMPOLINE:
     PUSH IX
+    PUSH IY
     PUSH DE
     PUSH AF
     LD   A, D
@@ -46,6 +47,7 @@ _PATCH_DEVICEID:
     JR   NZ, NEXT_DEVICE  
     POP AF
     POP DE       ;D is deviceid and E = function
+    POP IY
 _PATCH_MAPPERTABLE:
     CALL 0000h 
   
@@ -57,6 +59,7 @@ _PATCH_SEGMENT:
 NEXT_DEVICE:
     POP  AF                 ; Restore AF from the very beginning
     POP  DE
+    POP  IY
     POP  IX
     JR OLD_STUB_CODE
 END_OF_TRAMPOLINE:
