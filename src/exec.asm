@@ -51,6 +51,17 @@
 	PUBLIC  TOTHERWISE
 	PUBLIC	LET0
 ;----------------------------------------------------
+	EXTERN  RESERVED_SEGMENTS  		 ;EXEC_LOOP.ASM
+    EXTERN  TOTAL_SEGMENTS         	 	 ;EXEC_LOOP.ASM      
+    EXTERN  MAIN_SEGMENT  			 ;EXEC_LOOP.ASM
+	EXTERN  GET_CURRENT_SEGMENT_P2
+	EXTERN  COPY_P2_TO_ACTIVE_CONTEXT
+	EXTERN  COPY_ACTIVE_CONTEXT_TO_BUFFER
+	EXTERN  COPY_BUFFER_TO_ACTIVE_CONTEXT
+	EXTERN  SELECT_SEGMENT_P2
+	EXTERN  GET_CURRENT_SEGMENT_P2
+	
+
 	EXTERN  NEWLIN
     EXTERN  XEQ
     EXTERN  XEQ0
@@ -1058,7 +1069,13 @@ FNCHK	EQU	$
 ; --- INICIO DE PROCESAMIENTO DE UN PROCEDIMIENTO ---
 ; Se entra aquí cuando el intérprete detecta el token de PROC.
 ; AF viene con el flag de si es un "ON PROC" (para saltos múltiples).
-
+CURRENT_SEG:        DEFB 0
+RESTORE_CURRENT_CONTEXT:
+		;RECUPERAMOS EL SEGMENTO ORIGINAL (DONDE ESTAN LAS VARIABLES)
+		LD      A,(CURRENT_SEG)
+		CALL	SELECT_SEGMENT_P2
+		CALL    COPY_BUFFER_TO_ACTIVE_CONTEXT
+		RET
 PROC:   PUSH    AF      ; Reserva espacio en la pila para el flag de ON
         CALL    PROC1   ; Truco: llama a la siguiente línea para poner una dirección 
                         ; de retorno en la pila que servirá de marcador.
@@ -1067,10 +1084,28 @@ PROCHK  EQU $           ; Marcador de control (identifica una llamada PROC en la
 PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack Overflow check)
         DEC     IY      ; Retrocede el puntero de texto para leer el nombre del PROC
         PUSH    IY      ; Guarda dónde estaba el programa antes de la llamada
-        CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
+		;--- NECESITAMOS EL SEGMENTO
+		CALL    GET_CURRENT_SEGMENT_P2
+		LD 		(CURRENT_SEG),A
+		LD      A, (TOTAL_SEGMENTS)
+		LD      IX, RESERVED_SEGMENTS
+		LD      (IX-1),A  ;IX-1 is a helper var for looping through all segments
+		OR A
+		JR Z,PROC1_LOOP
+		CALL   COPY_ACTIVE_CONTEXT_TO_BUFFER   ;HAY LIBRERIAS ASI QUE GUARDAMOS EL CONTEXTO
+		INC    (IX-1)    ;one loop mor, one for each segment and one for current context
+		                 ;IMPORTANT! el contexto actual si esta en una LIB lo checkeamos 2 veces!
+						 ;una libreria solo debería poder usar las librrias instaladas por ella misma
+						 ;o sea segmentos posteriores
+		PUSH   IY      ;guardamos otra vez IY para recuperarlo en caso de no encontrarlo en este contexto
+PROC1_LOOP:
+		;---
+		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
         POP     BC      ; Recupera el puntero de texto original
         JR      Z,PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
-
+		
+;LA BUSQUEDA TENDRIAMOS QUE HACERLA EN TODOS LOS SEGMENTOS....
+LOOKUP_PROC:
         ; --- BÚSQUEDA DEL DEF PROC EN EL PROGRAMA ---
         ; Si no está en el cache, hay que buscar "DEF PROCnombre" desde el principio
         LD      A,30
@@ -1105,13 +1140,44 @@ PROC6:  EX      DE,HL       ; Salta el resto de la línea para seguir buscando e
         CPIR                ; Busca el final de línea (CR)
         JR      PROC2       ; Bucle de búsqueda
 
-PROC3:  POP     IY          ; Si llegamos aquí y no estaba -> Error
-        CALL    GETDEF
+PROC3:  POP     IY          ; Si llegamos aquí y no estaba -> Error			 A
+        CALL    GETDEF																			   ;|
         LD      A,29
-        JR      NZ,ERROR3   ; "No such FN/PROC"
+        JR      Z,GOTO_PROC4   ;ENCONTRADO!!!
+		;--------------------AQUI DEBERÍAMOS HACER EL BUCLE SI NO HAY LIBRERÍAS.____________________|
+CHECK_NEXT_LIB:
+		DEC      (IX-1)
+		JR      NZ,LOAD_NEXT_LIB
+		JP		ERROR3   ; "No such FN/PROC"
+LOAD_NEXT_LIB:
+		;cargamos el siguiente....
+		PUSH    HL
+		LD      HL,IX
+		DEC     A   ;recuerda a tiene 1 de mas
+		ADD     HL, A
+		LD      A,(HL) ;a tiene el nº de segmento ahora
+		CALL	SELECT_SEGMENT_P2
+		CALL 	COPY_P2_TO_ACTIVE_CONTEXT
+		POP     HL
+		POP     IY
+		PUSH    IY
+		JP      PROC1_LOOP
+       
 
-; --- PREPARACIÓN PARA LA EJECUCIÓN ---
-PROC4:  LD      E,(HL)      ; HL tenía la dirección en la tabla, ahora DE tiene
+GOTO_PROC4:
+		LD      A, (TOTAL_SEGMENTS)
+		OR      A
+		JR      Z, PROC4
+		PUSH    HL
+		CALL RESTORE_CURRENT_CONTEXT
+		POP     HL
+		POP     AF   ;CLEAN THE PILE WITHOUT LOOSING IY
+		
+
+		; --- AQUI EMPEZABA ANTES PROC4     ---
+		; --- PREPARACIÓN PARA LA EJECUCIÓN ---
+PROC4:	 
+		LD      E,(HL)      ; HL tenía la dirección en la tabla, ahora DE tiene
         INC     HL          ; la dirección real del código del procedimiento.
         LD      D,(HL)      
         LD      HL,2
