@@ -86,6 +86,7 @@
 	EXTERN	GETDEF
 	EXTERN	LOCATE
 	EXTERN	CREATE
+	EXTERN  CREATE_PROC
 	EXTERN	OUTCHR
 	EXTERN	EXTERR
 	EXTERN	BYE
@@ -1076,6 +1077,33 @@ RESTORE_CURRENT_CONTEXT:
 		CALL	SELECT_SEGMENT_P2
 		CALL    COPY_BUFFER_TO_ACTIVE_CONTEXT
 		RET
+
+CREATE_PROC_MARK:
+	
+		PUSH    HL
+		PUSH    IY
+		PUSH    IX
+		CALL 	RESTORE_CURRENT_CONTEXT
+		POP     IX
+		LD      A,(IX-1)
+
+		!!!!!!!!!!!!!!!!!!!!!!!QUE PASSSSSAAAAAA!!!!!!!!!!!!!!!
+		DEC     A   ;ONE BECAUSE IT IS TOTAL SGE
+		DEC     A   ; AND ONE BECAUSE WE MAKE A LOOP MORE FOR MAIN
+		LD      HL, RESERVED_SEGMENTS
+		ADD     HL,A
+		LD      A,(HL)
+		LD      HL,CURRENT_SEG
+		CP      (HL)
+		CALL    NZ,CREATE_PROC
+
+		POP     IY
+		POP     HL
+		RET
+
+
+
+
 PROC:   PUSH    AF      ; Reserva espacio en la pila para el flag de ON
         CALL    PROC1   ; Truco: llama a la siguiente línea para poner una dirección 
                         ; de retorno en la pila que servirá de marcador.
@@ -1090,14 +1118,14 @@ PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack O
 		LD      A, (TOTAL_SEGMENTS)
 		LD      IX, RESERVED_SEGMENTS
 		LD      (IX-1),A  ;IX-1 is a helper var for looping through all segments
-		OR A
-		JR Z,PROC1_LOOP
-		CALL   COPY_ACTIVE_CONTEXT_TO_BUFFER   ;HAY LIBRERIAS ASI QUE GUARDAMOS EL CONTEXTO
-		INC    (IX-1)    ;one loop mor, one for each segment and one for current context
+		OR 		A
+		JR 		Z,PROC1_LOOP
+		CALL   	COPY_ACTIVE_CONTEXT_TO_BUFFER   ;HAY LIBRERIAS ASI QUE GUARDAMOS EL CONTEXTO
+		INC    	(IX-1)    ;one loop more, one for each segment and one for current context
 		                 ;IMPORTANT! el contexto actual si esta en una LIB lo checkeamos 2 veces!
 						 ;una libreria solo debería poder usar las librrias instaladas por ella misma
 						 ;o sea segmentos posteriores
-		PUSH   IY      ;guardamos otra vez IY para recuperarlo en caso de no encontrarlo en este contexto
+		PUSH   	IY      ;guardamos otra vez IY para recuperarlo en caso de no encontrarlo en este contexto
 PROC1_LOOP:
 		;---
 		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
@@ -1126,8 +1154,10 @@ PROC2:  LD      A,TDEF      ; Token de "DEF"
         POP     DE
         JR      C,PROC6     ; No coincide, seguimos buscando
         
-        ; --- ENCONTRADO ---
-        CALL    NZ,CREATE   ; Si es nuevo, lo añade a la tabla de saltos para la próxima vez
+        ; --- ENCONTRADO ---;
+        
+		CALL 	NZ,CREATE   ; Si es nuevo, lo añade a la tabla de saltos para la próxima vez
+        
         PUSH    IY
         POP     DE
         LD      (HL),E      ; Guarda la dirección (LSB) en la tabla
@@ -1160,6 +1190,8 @@ LOAD_NEXT_LIB:
 		CALL 	COPY_P2_TO_ACTIVE_CONTEXT
 		POP     HL
 		POP     IY
+		LD      IY,PAGE   ;------------------------search from the start of user program
+		LD      IX,SELECT_SEGMENT_P2
 		PUSH    IY
 		JP      PROC1_LOOP
        
@@ -1168,9 +1200,7 @@ GOTO_PROC4:
 		LD      A, (TOTAL_SEGMENTS)
 		OR      A
 		JR      Z, PROC4
-		PUSH    HL
-		CALL RESTORE_CURRENT_CONTEXT
-		POP     HL
+		CALL    CREATE_PROC_MARK
 		POP     AF   ;CLEAN THE PILE WITHOUT LOOSING IY
 		
 

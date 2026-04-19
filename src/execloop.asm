@@ -89,8 +89,8 @@ REG_SEGMENT:
     ADD   HL, DE            ; HL = LISTA_SEGS + TOTAL_SEGMENTS
     INC   A
     LD    (TOTAL_SEGMENTS), A
-    LD    (HL), A           ; Guardamos el ID en el array
     EX   AF,AF'            ; Do not destroy AF it has the segment number
+    LD    (HL), A           ; Guardamos el ID en el array
     RET
 COPY_ACTIVE_CONTEXT_TO_BUFFER:
     LD  HL, ACCS
