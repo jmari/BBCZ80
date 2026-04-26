@@ -60,6 +60,9 @@
 	EXTERN  COPY_BUFFER_TO_ACTIVE_CONTEXT
 	EXTERN  SELECT_SEGMENT_P2
 	EXTERN  GET_CURRENT_SEGMENT_P2
+	EXTERN  INITIALIZE_SEGMENT_CONTEXT
+	EXTERN  CONTEXT_COPY
+	
 	
 
 	EXTERN  NEWLIN
@@ -1070,6 +1073,10 @@ FNCHK	EQU	$
 ; --- INICIO DE PROCESAMIENTO DE UN PROCEDIMIENTO ---
 ; Se entra aquí cuando el intérprete detecta el token de PROC.
 ; AF viene con el flag de si es un "ON PROC" (para saltos múltiples).
+;
+; --- INICIO DE PROCESAMIENTO DE UN PROCEDIMIENTO ---
+; Se entra aquí cuando el intérprete detecta el token de PROC.
+; AF viene con el flag de si es un "ON PROC" (para saltos múltiples).
 CURRENT_SEG:        DEFB 0
 RESTORE_CURRENT_CONTEXT:
 		;RECUPERAMOS EL SEGMENTO ORIGINAL (DONDE ESTAN LAS VARIABLES)
@@ -1083,26 +1090,35 @@ CREATE_PROC_MARK:
 		PUSH    HL
 		PUSH    IY
 		PUSH    IX
+		; ANTES DE RESTAURAR SEGMENTO 
+		; HAY QUE COPIAR LA CABECERA DE DEF PROC_name(....)
+		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
 		CALL 	RESTORE_CURRENT_CONTEXT
-		POP     IX
+		POP     IX  ;IX IS DIRTY BECAUSE OF SELECT_SEGMENT_P2
 		LD      A,(IX-1)
-
-		!!!!!!!!!!!!!!!!!!!!!!!QUE PASSSSSAAAAAA!!!!!!!!!!!!!!!
-		DEC     A   ;ONE BECAUSE IT IS TOTAL SGE
-		DEC     A   ; AND ONE BECAUSE WE MAKE A LOOP MORE FOR MAIN
+		DEC     A   ; ONE BECAUSE IT IS TOTAL SGE SO -1 IS THE POSITION
+		DEC     A   ; AND ONE MORE BECAUSE WE MAKE A LOOP MORE FOR THE MAIN SEGMENT THAT IS NOT RESERVED
 		LD      HL, RESERVED_SEGMENTS
 		ADD     HL,A
 		LD      A,(HL)
+		PUSH    AF
 		LD      HL,CURRENT_SEG
 		CP      (HL)
-		CALL    NZ,CREATE_PROC
-
+		CALL    NZ,CREATE
+        POP     AF
+		LD      (HL),A      ; Guarda el segmento en (LSB) de la tabla Heap 
 		POP     IY
 		POP     HL
 		RET
 
-
-
+COPY_PROC_TO_BUFFER:
+		EXX
+		LD     HL,IY ;IY
+		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
+		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...da igual lo que tenga despues
+		LDIR
+		EXX
+		RET
 
 PROC:   PUSH    AF      ; Reserva espacio en la pila para el flag de ON
         CALL    PROC1   ; Truco: llama a la siguiente línea para poner una dirección 
@@ -1181,18 +1197,20 @@ CHECK_NEXT_LIB:
 		JP		ERROR3   ; "No such FN/PROC"
 LOAD_NEXT_LIB:
 		;cargamos el siguiente....
-		PUSH    HL
+		POP     IY
 		LD      HL,IX
-		DEC     A   ;recuerda a tiene 1 de mas
+		LD      A,(IX-1)
+		DEC     A   ;recuerda a tiene 1 de mas   
 		ADD     HL, A
 		LD      A,(HL) ;a tiene el nº de segmento ahora
 		CALL	SELECT_SEGMENT_P2
 		CALL 	COPY_P2_TO_ACTIVE_CONTEXT
-		POP     HL
-		POP     IY
-		LD      IY,PAGE   ;------------------------search from the start of user program
-		LD      IX,SELECT_SEGMENT_P2
+		CALL    INITIALIZE_SEGMENT_CONTEXT
+        LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
+		LD      IX,RESERVED_SEGMENTS
+		LD      IY,CONTEXT_COPY + 100H ;PROC_name LO GUARDAMOS EN EL BUFFER
 		PUSH    IY
+		AND     A    ;RESETS CARRY
 		JP      PROC1_LOOP
        
 
