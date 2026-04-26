@@ -60,6 +60,8 @@
 	EXTERN  COPY_BUFFER_TO_ACTIVE_CONTEXT
 	EXTERN  SELECT_SEGMENT_P2
 	EXTERN  GET_CURRENT_SEGMENT_P2
+	EXTERN  INITIALIZE_SEGMENT_CONTEXT
+	EXTERN  CONTEXT_COPY
 	
 
 	EXTERN  NEWLIN
@@ -86,7 +88,6 @@
 	EXTERN	GETDEF
 	EXTERN	LOCATE
 	EXTERN	CREATE
-	EXTERN  CREATE_PROC
 	EXTERN	OUTCHR
 	EXTERN	EXTERR
 	EXTERN	BYE
@@ -1083,26 +1084,42 @@ CREATE_PROC_MARK:
 		PUSH    HL
 		PUSH    IY
 		PUSH    IX
+		; ANTES DE RESTAURAR SEGMENTO 
+		; HAY QUE COPIAR LA CABECERA DE DEF PROC_name(....)
+		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
 		CALL 	RESTORE_CURRENT_CONTEXT
-		POP     IX
+		POP     IX  ;IX IS DIRTY BECAUSE OF SELECT_SEGMENT_P2
 		LD      A,(IX-1)
-
-		!!!!!!!!!!!!!!!!!!!!!!!QUE PASSSSSAAAAAA!!!!!!!!!!!!!!!
-		DEC     A   ;ONE BECAUSE IT IS TOTAL SGE
-		DEC     A   ; AND ONE BECAUSE WE MAKE A LOOP MORE FOR MAIN
+		DEC     A   ; ONE BECAUSE IT IS TOTAL SGE SO -1 IS THE POSITION
+		DEC     A   ; AND ONE MORE BECAUSE WE MAKE A LOOP MORE FOR THE MAIN SEGMENT THAT IS NOT RESERVED
 		LD      HL, RESERVED_SEGMENTS
 		ADD     HL,A
 		LD      A,(HL)
+		PUSH    AF
 		LD      HL,CURRENT_SEG
 		CP      (HL)
-		CALL    NZ,CREATE_PROC
-
+		JR      NZ,CREATE_PM
+		CALL	CREATE
+		POP     AF
+		POP     IY
+		POP     HL
+		RET
+CREATE_PM:
+		CALL	CREATE
+        POP     AF
+		LD      (HL),A      ; Guarda el segmento en (LSB) de la tabla Heap 
 		POP     IY
 		POP     HL
 		RET
 
-
-
+COPY_PROC_TO_BUFFER:
+		EXX
+		LD     HL,IY ;IY
+		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
+		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...da igual lo que tenga despues
+		LDIR
+		EXX
+		RET
 
 PROC:   PUSH    AF      ; Reserva espacio en la pila para el flag de ON
         CALL    PROC1   ; Truco: llama a la siguiente línea para poner una dirección 
@@ -1121,6 +1138,7 @@ PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack O
 		OR 		A
 		JR 		Z,PROC1_LOOP
 		CALL   	COPY_ACTIVE_CONTEXT_TO_BUFFER   ;HAY LIBRERIAS ASI QUE GUARDAMOS EL CONTEXTO
+		CALL    COPY_PROC_TO_BUFFER
 		INC    	(IX-1)    ;one loop more, one for each segment and one for current context
 		                 ;IMPORTANT! el contexto actual si esta en una LIB lo checkeamos 2 veces!
 						 ;una libreria solo debería poder usar las librrias instaladas por ella misma
@@ -1132,12 +1150,10 @@ PROC1_LOOP:
         POP     BC      ; Recupera el puntero de texto original
         JR      Z,PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
 		
-;LA BUSQUEDA TENDRIAMOS QUE HACERLA EN TODOS LOS SEGMENTOS....
-LOOKUP_PROC:
         ; --- BÚSQUEDA DEL DEF PROC EN EL PROGRAMA ---
         ; Si no está en el cache, hay que buscar "DEF PROCnombre" desde el principio
         LD      A,30
-        JR      C,ERROR3    ; Si GETDEF dio error, "Bad call"
+        JP      C,ERROR3    ; Si GETDEF dio error, "Bad call"
         PUSH    BC          ; Guarda otra vez el puntero de texto
         LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
 
@@ -1181,18 +1197,20 @@ CHECK_NEXT_LIB:
 		JP		ERROR3   ; "No such FN/PROC"
 LOAD_NEXT_LIB:
 		;cargamos el siguiente....
-		PUSH    HL
+		POP     IY
 		LD      HL,IX
-		DEC     A   ;recuerda a tiene 1 de mas
+		LD      A,(IX-1)
+		DEC     A   ;recuerda a tiene 1 de mas   
 		ADD     HL, A
 		LD      A,(HL) ;a tiene el nº de segmento ahora
 		CALL	SELECT_SEGMENT_P2
 		CALL 	COPY_P2_TO_ACTIVE_CONTEXT
-		POP     HL
-		POP     IY
-		LD      IY,PAGE   ;------------------------search from the start of user program
-		LD      IX,SELECT_SEGMENT_P2
+		CALL    INITIALIZE_SEGMENT_CONTEXT
+        LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
+		LD      IX,RESERVED_SEGMENTS
+		LD      IY,CONTEXT_COPY + 100H ;PROC_name LO GUARDAMOS EN EL BUFFER
 		PUSH    IY
+		AND     A    ;RESETS CARRY
 		JP      PROC1_LOOP
        
 
@@ -1201,7 +1219,8 @@ GOTO_PROC4:
 		OR      A
 		JR      Z, PROC4
 		CALL    CREATE_PROC_MARK
-		POP     AF   ;CLEAN THE PILE WITHOUT LOOSING IY
+		INC     HL
+		POP     IY   ;CLEAN "PRETENDING" IY
 		
 
 		; --- AQUI EMPEZABA ANTES PROC4     ---
@@ -1209,12 +1228,14 @@ GOTO_PROC4:
 PROC4:	 
 		LD      E,(HL)      ; HL tenía la dirección en la tabla, ahora DE tiene
         INC     HL          ; la dirección real del código del procedimiento.
-        LD      D,(HL)      
+        LD      D,(HL)      ; Cuando el procedimieto está ubicado en otro segmento
+							; DE contendrá el nº de segmento, la dirección estará en el heap de dicho
+							; segmento!
         LD      HL,2
         ADD     HL,SP       ; Apunta HL a la dirección de retorno en la pila
         CALL    NXT         ; Mira si después del nombre hay un '('
         
-        PUSH    DE          ; Swap: IY ahora apunta al inicio del DEF PROC
+        PUSH    DE          ; Swap: IY ahora apunta al inicio del DEF PROC (o bien a otro segmento!)
         EX      (SP),IY     ; y DE guarda el puntero de texto del programa principal
         POP     DE
 
@@ -2855,7 +2876,7 @@ SAVLO6: PUSH    DE          ; Guarda la dirección de retorno de SAVLOC en la pi
         EXX                 ; Cambia a registros alternativos para no perder nada
         PUSH    BC          ; Salva todo el juego alternativo en la pila
         PUSH    DE          ; porque VAR y LOADN los van a usar.
-        PUSH    HL
+        PUSH    HL			; eL JUEGO ALTERNATIVO CONTIENE LAS DIRECCIONES DEL HEAP...
         EXX
         
         CALL    VAR         ; *** BUSCA LA VARIABLE ***
@@ -3301,4 +3322,3 @@ FREES2:	POP	DE
 	POP	AF
 	RET
 ;
-
