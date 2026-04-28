@@ -1104,7 +1104,13 @@ CREATE_PROC_MARK:
 		PUSH    AF
 		LD      HL,CURRENT_SEG
 		CP      (HL)
-		CALL    NZ,CREATE
+		JR      NZ,CREATE_MARK		
+        POP     AF
+		POP     IY
+		POP     HL
+		RET
+CREATE_MARK:
+		CALL    CREATE
         POP     AF
 		LD      (HL),A      ; Guarda el segmento en (LSB) de la tabla Heap 
 		POP     IY
