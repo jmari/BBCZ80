@@ -1090,9 +1090,7 @@ CREATE_PROC_MARK:
 		PUSH    HL
 		PUSH    IY
 		PUSH    IX
-		; ANTES DE RESTAURAR SEGMENTO 
-		; HAY QUE COPIAR LA CABECERA DE DEF PROC_name(....)
-		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
+
 		CALL 	RESTORE_CURRENT_CONTEXT
 		POP     IX  ;IX IS DIRTY BECAUSE OF SELECT_SEGMENT_P2
 		LD      A,(IX-1)
@@ -1108,16 +1106,32 @@ CREATE_PROC_MARK:
         POP     AF
 		POP     IY
 		POP     HL
+		OR A ;RESET CARRY
 		RET
 CREATE_MARK:
 		CALL    CREATE
         POP     AF
 		LD      (HL),A      ; Guarda el segmento en (LSB) de la tabla Heap 
-		POP     IY
 		POP     HL
+		POP     AF          ; LIMPIAMOS PILA, EN REALIDAD EN HL QUEREMOS EL SEGMENTO <= FFH
+							; DONDE PODEMOS ENCONTRAR (EN SU HEAP) LA DIRECCION DEL DEF PROC
+		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
+		SBC    HL,DE
+		PUSH   HL
+		POP    DE
+		SCF
 		RET
 
 COPY_PROC_TO_BUFFER:
+		EXX
+		LD     HL,IY ;IY
+		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
+		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...da igual lo que tenga despues
+		LDIR
+		EXX
+		RET
+
+COPY_DEFPROC_TO_BUFFER:
 		EXX
 		LD     HL,IY ;IY
 		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
@@ -1143,6 +1157,7 @@ PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack O
 		OR 		A
 		JR 		Z,PROC1_LOOP
 		CALL   	COPY_ACTIVE_CONTEXT_TO_BUFFER   ;HAY LIBRERIAS ASI QUE GUARDAMOS EL CONTEXTO
+		CALL    COPY_PROC_TO_BUFFER
 		INC    	(IX-1)    ;one loop more, one for each segment and one for current context
 		                 ;IMPORTANT! el contexto actual si esta en una LIB lo checkeamos 2 veces!
 						 ;una libreria solo debería poder usar las librrias instaladas por ella misma
@@ -1159,7 +1174,7 @@ LOOKUP_PROC:
         ; --- BÚSQUEDA DEL DEF PROC EN EL PROGRAMA ---
         ; Si no está en el cache, hay que buscar "DEF PROCnombre" desde el principio
         LD      A,30
-        JR      C,ERROR3    ; Si GETDEF dio error, "Bad call"
+        JP      C,ERROR3    ; Si GETDEF dio error, "Bad call"
         PUSH    BC          ; Guarda otra vez el puntero de texto
         LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
 
@@ -1177,12 +1192,10 @@ PROC2:  LD      A,TDEF      ; Token de "DEF"
         JR      C,PROC6     ; No coincide, seguimos buscando
         
         ; --- ENCONTRADO ---;
-        
 		CALL 	NZ,CREATE   ; Si es nuevo, lo añade a la tabla de saltos para la próxima vez
-        
         PUSH    IY
         POP     DE
-        LD      (HL),E      ; Guarda la dirección (LSB) en la tabla
+        LD      (HL),E      ; Guarda la dirección (LSB) en la tabla del segmento correspondiente
         INC     HL
         LD      (HL),D      ; Guarda la dirección (MSB)
         
@@ -1203,7 +1216,8 @@ CHECK_NEXT_LIB:
 		JP		ERROR3   ; "No such FN/PROC"
 LOAD_NEXT_LIB:
 		;cargamos el siguiente....
-		POP     IY
+		;POP     IY
+		
 		LD      HL,IX
 		LD      A,(IX-1)
 		DEC     A   ;recuerda a tiene 1 de mas   
@@ -1221,19 +1235,44 @@ LOAD_NEXT_LIB:
        
 
 GOTO_PROC4:
+
 		LD      A, (TOTAL_SEGMENTS)
 		OR      A
 		JR      Z, PROC4
+		; ANTES DE RESTAURAR SEGMENTO 
+		; HAY QUE COPIAR LA CABECERA DE DEF PROC_name(....)
+		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
+		CALL    COPY_DEFPROC_TO_BUFFER
 		CALL    CREATE_PROC_MARK
-		POP     AF   ;CLEAN THE PILE WITHOUT LOOSING IY
+		POP     BC   ;CLEAN THE PILE AND RECOVER IY into AF(PROC IN ORIGINAL SEGMENT) 
+		JR      NC,PROC4
+		PUSH    BC
+		POP     IY
+		ADD     IY,DE   ;SALTA EL PROC_name (DE LO DEVUELVE  EN CREATE_PROC_MARK)
+		INC 	IY		;SALTA EL TOKEN
 		
 
 		; --- AQUI EMPEZABA ANTES PROC4     ---
 		; --- PREPARACIÓN PARA LA EJECUCIÓN ---
+
+; SI DEF PROC ESTA EN OTRO SEGMENTO:
+; HL TENDRA EL Nº DE SEGMENTO <= FFH 
+; IY APUNTARÁ AL PROC EN NUESTRO SEGMENTO, PERO SI ESTA EN OTRA LIBRERIA LA ANTIGUA DIRECCION ESTA EN A
+; DEBERIAMOS COPIAR ENTONCES LA CABECERA FALSA DEL PROCEDIMIENTO AL BUFFER
+; Y APUNTAR HL A ESA CABECERA REAL CON EL OBJETIVO DE CARGAR LOS VALORES DE 
+; LOS PARAMETROS EN LA PILA. UNA VEZ COPIADOS A LA PILA DEBEREMOS CAMBIAR AL 
+; SEGMENTO DEL PROCEDIMIENTO Y EJECUTARLO 
 PROC4:	 
-		LD      E,(HL)      ; HL tenía la dirección en la tabla, ahora DE tiene
+		LD      A,H
+		OR		A
+		JR      NZ,PROC4_1
+		LD      DE, CONTEXT_COPY + 100H  ;DEFPROC IS IN input Buffer
+		JR      PROC4_2
+PROC4_1:
+		LD      E,(HL)      ; HL tenía la dirección en la tabla, O EL SEGMENTO ahora DE tiene
         INC     HL          ; la dirección real del código del procedimiento.
-        LD      D,(HL)      
+        LD      D,(HL)     
+PROC4_2: 
         LD      HL,2
         ADD     HL,SP       ; Apunta HL a la dirección de retorno en la pila
         CALL    NXT         ; Mira si después del nombre hay un '('
