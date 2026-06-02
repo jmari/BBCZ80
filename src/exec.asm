@@ -54,7 +54,6 @@
 	EXTERN  RESERVED_SEGMENTS  		 ;EXEC_LOOP.ASM
     EXTERN  TOTAL_SEGMENTS         	 	 ;EXEC_LOOP.ASM      
     EXTERN  MAIN_SEGMENT  			 ;EXEC_LOOP.ASM
-	EXTERN  GET_CURRENT_SEGMENT_P2
 	EXTERN  COPY_P2_TO_ACTIVE_CONTEXT
 	EXTERN  COPY_ACTIVE_CONTEXT_TO_BUFFER
 	EXTERN  COPY_BUFFER_TO_ACTIVE_CONTEXT
@@ -1073,13 +1072,11 @@ FNCHK	EQU	$
 ; --- INICIO DE PROCESAMIENTO DE UN PROCEDIMIENTO ---
 ; Se entra aquí cuando el intérprete detecta el token de PROC.
 ; AF viene con el flag de si es un "ON PROC" (para saltos múltiples).
-;
-; --- INICIO DE PROCESAMIENTO DE UN PROCEDIMIENTO ---
-; Se entra aquí cuando el intérprete detecta el token de PROC.
-; AF viene con el flag de si es un "ON PROC" (para saltos múltiples).
+
 CURRENT_SEG:        DEFB 0
 RESTORE_CURRENT_CONTEXT:
 		;RECUPERAMOS EL SEGMENTO ORIGINAL (DONDE ESTAN LAS VARIABLES)
+		; SOLO si son diferentes
 		LD      A,(CURRENT_SEG)
 		CALL	SELECT_SEGMENT_P2
 		CALL    COPY_BUFFER_TO_ACTIVE_CONTEXT
@@ -1087,13 +1084,9 @@ RESTORE_CURRENT_CONTEXT:
 
 CREATE_PROC_MARK:
 	
-		PUSH    HL
-		PUSH    IY
-		PUSH    IX
-
-		CALL 	RESTORE_CURRENT_CONTEXT
-		POP     IX  ;IX IS DIRTY BECAUSE OF SELECT_SEGMENT_P2
-		LD      A,(IX-1)
+		PUSH    HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
+		PUSH    IY  ; contiene la posicion despues de PROCname
+		LD      A,(IX-1) ;antes de la lista de segmentos está el contador auxiliar
 		DEC     A   ; ONE BECAUSE IT IS TOTAL SGE SO -1 IS THE POSITION
 		DEC     A   ; AND ONE MORE BECAUSE WE MAKE A LOOP MORE FOR THE MAIN SEGMENT THAT IS NOT RESERVED
 		LD      HL, RESERVED_SEGMENTS
@@ -1103,22 +1096,26 @@ CREATE_PROC_MARK:
 		LD      HL,CURRENT_SEG
 		CP      (HL)
 		JR      NZ,CREATE_MARK		
-        POP     AF
+        POP     AF ;RECUPERAMOS AF de la pila
 		POP     IY
 		POP     HL
-		OR A ;RESET CARRY
+		OR      A ;RESET CARRY
 		RET
 CREATE_MARK:
+		PUSH    IX  ; contiene el puntero a la lista de segmentos
+		CALL 	RESTORE_CURRENT_CONTEXT
+		POP     IX  ;IX was DIRTY BECAUSE OF SELECT_SEGMENT_P2 SO WE HAVE TO RESTORE
 		CALL    CREATE
         POP     AF
 		LD      (HL),A      ; Guarda el segmento en (LSB) de la tabla Heap 
-		POP     HL
-		POP     AF          ; LIMPIAMOS PILA, EN REALIDAD EN HL QUEREMOS EL SEGMENTO <= FFH
-							; DONDE PODEMOS ENCONTRAR (EN SU HEAP) LA DIRECCION DEL DEF PROC
+		INC      HL
+		LD      (HL),0      ; Guarda el segmento en (HSB) a 0 
+		POP     HL			; EN REALIDAD EN HL tiene IY, pos despues de PROCname
 		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
 		SBC    HL,DE
 		PUSH   HL
 		POP    DE
+		POP    HL          ;hl contiene la posicion despues de DEF PROCname (nnn)CR
 		SCF
 		RET
 
@@ -1132,12 +1129,17 @@ COPY_PROC_TO_BUFFER:
 		RET
 
 COPY_DEFPROC_TO_BUFFER:
+		PUSH   IX
+		PUSH   HL  ;NECESITAMOS HL
 		EXX
-		LD     HL,IY ;IY
+		;TRABAJAMOS CON LOS  REGISTROS '
+		POP    IX ; HL TENIA la direccion del heap
+		LD     HL,(IX)
 		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
 		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...da igual lo que tenga despues
 		LDIR
 		EXX
+		POP    IX ;HL,DE Y BC SIGUEN VALIENDO LO MISMO E IX TAMBIEN
 		RET
 
 PROC:   PUSH    AF      ; Reserva espacio en la pila para el flag de ON
@@ -1167,9 +1169,9 @@ PROC1_LOOP:
 		;---
 		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
         POP     BC      ; Recupera el puntero de texto original
-        JR      Z,PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
+        JR      Z,GOTO_PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
 		
-;LA BUSQUEDA TENDRIAMOS QUE HACERLA EN TODOS LOS SEGMENTOS....
+;LA BUSQUEDA TENEMOS QUE HACERLA EN TODOS LOS SEGMENTOS....
 LOOKUP_PROC:
         ; --- BÚSQUEDA DEL DEF PROC EN EL PROGRAMA ---
         ; Si no está en el cache, hay que buscar "DEF PROCnombre" desde el principio
@@ -1199,13 +1201,14 @@ PROC2:  LD      A,TDEF      ; Token de "DEF"
         INC     HL
         LD      (HL),D      ; Guarda la dirección (MSB)
         
-PROC6:  EX      DE,HL       ; Salta el resto de la línea para seguir buscando en la siguiente
+PROC6:
+		EX      DE,HL       ; Salta el resto de la línea para seguir buscando en la siguiente
         LD      A,CR
         LD      B,A
         CPIR                ; Busca el final de línea (CR)
         JR      PROC2       ; Bucle de búsqueda
 
-PROC3:  POP     IY          ; Si llegamos aquí y no estaba -> Error			 A
+PROC3:  POP     IY          ; 
         CALL    GETDEF																			   ;|
         LD      A,29
         JR      Z,GOTO_PROC4   ;ENCONTRADO!!!
@@ -1228,7 +1231,7 @@ LOAD_NEXT_LIB:
 		CALL    INITIALIZE_SEGMENT_CONTEXT
         LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
 		LD      IX,RESERVED_SEGMENTS
-		LD      IY,CONTEXT_COPY + 100H ;PROC_name LO GUARDAMOS EN EL BUFFER
+		LD      IY,CONTEXT_COPY + 100H ;PROC_name LO tenemos guardado EN EL BUFFER movemos el puntero de linea ahi
 		PUSH    IY
 		AND     A    ;RESETS CARRY
 		JP      PROC1_LOOP
@@ -1242,12 +1245,13 @@ GOTO_PROC4:
 		; ANTES DE RESTAURAR SEGMENTO 
 		; HAY QUE COPIAR LA CABECERA DE DEF PROC_name(....)
 		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
+		 
 		CALL    COPY_DEFPROC_TO_BUFFER
 		CALL    CREATE_PROC_MARK
-		POP     BC   ;CLEAN THE PILE AND RECOVER IY into AF(PROC IN ORIGINAL SEGMENT) 
+		;IY de la llamada ORIGINAL NO LO QUEREMOS EN IY
+		INC 	SP 
+		INC     SP
 		JR      NC,PROC4
-		PUSH    BC
-		POP     IY
 		ADD     IY,DE   ;SALTA EL PROC_name (DE LO DEVUELVE  EN CREATE_PROC_MARK)
 		INC 	IY		;SALTA EL TOKEN
 		
