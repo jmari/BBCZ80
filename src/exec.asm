@@ -16,6 +16,7 @@
 ;VERSION 5.3, 31-01-2025
 ;
 	EXTERN	XEQ
+	EXTERN	EXEC_REMOTE
 	PUBLIC	RUN0
 	PUBLIC	CHAIN0
 	PUBLIC	CHECK
@@ -50,6 +51,7 @@
 	PUBLIC  WHEN		;WHEN
 	PUBLIC  TOTHERWISE
 	PUBLIC	LET0
+	PUBLIC  ARGUE
 ;----------------------------------------------------
 	EXTERN  RESERVED_SEGMENTS  		 ;EXEC_LOOP.ASM
     EXTERN  TOTAL_SEGMENTS         	 	 ;EXEC_LOOP.ASM      
@@ -59,7 +61,7 @@
 	EXTERN  COPY_BUFFER_TO_ACTIVE_CONTEXT
 	EXTERN  SELECT_SEGMENT_P2
 	EXTERN  GET_CURRENT_SEGMENT_P2
-	EXTERN  INITIALIZE_SEGMENT_CONTEXT
+	EXTERN  INIT_CONTEXT_IN_A_SEGMENT
 	EXTERN  CONTEXT_COPY
 	
 	
@@ -1086,9 +1088,17 @@ CREATE_PROC_MARK:
 	
 		PUSH    HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
 		PUSH    IY  ; contiene la posicion despues de PROCname
-		LD      A,(IX-1) ;antes de la lista de segmentos está el contador auxiliar
-		DEC     A   ; ONE BECAUSE IT IS TOTAL SGE SO -1 IS THE POSITION
-		DEC     A   ; AND ONE MORE BECAUSE WE MAKE A LOOP MORE FOR THE MAIN SEGMENT THAT IS NOT RESERVED
+		LD      L,(IX-1) ;antes de la lista de segmentos está el contador auxiliar
+		LD 		A,(TOTAL_SEGMENTS)
+		CP		L
+
+		JR      C,same_segment
+		LD      A,L
+		DEC     A   ; AND ONE LESS BECAUSE WE MAKE A LOOP MORE FOR THE MAIN SEGMENT THAT IS NOT RESERVED
+		JR      different_segment
+same_segment:
+		XOR     A
+different_segment:
 		LD      HL, RESERVED_SEGMENTS
 		ADD     HL,A
 		LD      A,(HL)
@@ -1111,19 +1121,23 @@ CREATE_MARK:
 		INC      HL
 		LD      (HL),0      ; Guarda el segmento en (HSB) a 0 
 		POP     HL			; EN REALIDAD EN HL tiene IY, pos despues de PROCname
-		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
+		LD     DE, CONTEXT_COPY   ;copy of input Buffer
 		SBC    HL,DE
 		PUSH   HL
 		POP    DE
-		POP    HL          ;hl contiene la posicion despues de DEF PROCname (nnn)CR
+		;POP    HL          ;hl contiene la posicion despues de DEF PROCname (nnn)CResta la hemos guardado en el heap del segmento donde se encuentra el codigo
+		INC    SP
+		INC    SP
+		LD     L,A
+		LD     H,0
 		SCF
 		RET
 
 COPY_PROC_TO_BUFFER:
 		EXX
 		LD     HL,IY ;IY
-		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
-		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...da igual lo que tenga despues
+		LD     DE, CONTEXT_COPY  ;copy of input Buffer
+		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...
 		LDIR
 		EXX
 		RET
@@ -1135,7 +1149,7 @@ COPY_DEFPROC_TO_BUFFER:
 		;TRABAJAMOS CON LOS  REGISTROS '
 		POP    IX ; HL TENIA la direccion del heap
 		LD     HL,(IX)
-		LD     DE, CONTEXT_COPY + 100H  ;copy of input Buffer
+		LD     DE, CONTEXT_COPY   ;copy of input Buffer
 		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...da igual lo que tenga despues
 		LDIR
 		EXX
@@ -1164,12 +1178,12 @@ PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack O
 		                 ;IMPORTANT! el contexto actual si esta en una LIB lo checkeamos 2 veces!
 						 ;una libreria solo debería poder usar las librrias instaladas por ella misma
 						 ;o sea segmentos posteriores
-		PUSH   	IY      ;guardamos otra vez IY para recuperarlo en caso de no encontrarlo en este contexto
 PROC1_LOOP:
 		;---
 		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
         POP     BC      ; Recupera el puntero de texto original
-        JR      Z,GOTO_PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
+        JP      Z,PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
+		PUSH   	IY      ;guardamos otra vez IY para recuperarlo en caso de no encontrarlo en este contexto
 		
 ;LA BUSQUEDA TENEMOS QUE HACERLA EN TODOS LOS SEGMENTOS....
 LOOKUP_PROC:
@@ -1228,13 +1242,15 @@ LOAD_NEXT_LIB:
 		LD      A,(HL) ;a tiene el nº de segmento ahora
 		CALL	SELECT_SEGMENT_P2
 		CALL 	COPY_P2_TO_ACTIVE_CONTEXT
-		CALL    INITIALIZE_SEGMENT_CONTEXT
+		CALL    INIT_CONTEXT_IN_A_SEGMENT
         LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
 		LD      IX,RESERVED_SEGMENTS
-		LD      IY,CONTEXT_COPY + 100H ;PROC_name LO tenemos guardado EN EL BUFFER movemos el puntero de linea ahi
+		LD      IY,CONTEXT_COPY  ;PROC_name LO tenemos guardado EN EL BUFFER movemos el puntero de linea ahi
 		PUSH    IY
 		AND     A    ;RESETS CARRY
-		JP      PROC1_LOOP
+		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
+        POP     BC      ; Recupera el puntero de texto original
+		JP      NZ,LOOKUP_PROC
        
 
 GOTO_PROC4:
@@ -1247,30 +1263,36 @@ GOTO_PROC4:
 		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
 		 
 		CALL    COPY_DEFPROC_TO_BUFFER
-		CALL    CREATE_PROC_MARK
+		CALL    CREATE_PROC_MARK 
 		;IY de la llamada ORIGINAL NO LO QUEREMOS EN IY
-		INC 	SP 
-		INC     SP
+		POP     BC
 		JR      NC,PROC4
+		PUSH    BC
+		POP     IY      ;porque esta aqui ?¿?
+
 		ADD     IY,DE   ;SALTA EL PROC_name (DE LO DEVUELVE  EN CREATE_PROC_MARK)
-		INC 	IY		;SALTA EL TOKEN
+		
 		
 
 		; --- AQUI EMPEZABA ANTES PROC4     ---
 		; --- PREPARACIÓN PARA LA EJECUCIÓN ---
 
 ; SI DEF PROC ESTA EN OTRO SEGMENTO:
-; HL TENDRA EL Nº DE SEGMENTO <= FFH 
-; IY APUNTARÁ AL PROC EN NUESTRO SEGMENTO, PERO SI ESTA EN OTRA LIBRERIA LA ANTIGUA DIRECCION ESTA EN A
-; DEBERIAMOS COPIAR ENTONCES LA CABECERA FALSA DEL PROCEDIMIENTO AL BUFFER
-; Y APUNTAR HL A ESA CABECERA REAL CON EL OBJETIVO DE CARGAR LOS VALORES DE 
+; HL TIENE LA DIRECCION EN LA PILA DONDE GUARDA LA POSICION DEL '(' DEL DEF PROC
+; PERO SI ESTA EN OTRO SEGMENTO TENDRA EL Nº DE SEGMENTO <= FFH  Y 
+; HL' LA DIRECCION DEL CUERPO DEL PROG EN ESE SEGMENTO.
+; IY APUNTARÁ AL PROC EN NUESTRO SEGMENTO,
+; EN EL BUFFER DE LA COPIA DEL CONTEXTO TENEMOS LA COPIA DE LA CABECERA DEL DEFPROC A PARTIR DEL '(''
+; PARA EL OBJETIVO DE CARGAR LOS VALORES DE 
 ; LOS PARAMETROS EN LA PILA. UNA VEZ COPIADOS A LA PILA DEBEREMOS CAMBIAR AL 
 ; SEGMENTO DEL PROCEDIMIENTO Y EJECUTARLO 
 PROC4:	 
 		LD      A,H
 		OR		A
 		JR      NZ,PROC4_1
-		LD      DE, CONTEXT_COPY + 100H  ;DEFPROC IS IN input Buffer
+		LD 		A,L
+		LD      (RESERVED_SEGMENTS -1),A
+		LD      DE, CONTEXT_COPY  ;DEFPROC IS IN input Buffer
 		JR      PROC4_2
 PROC4_1:
 		LD      E,(HL)      ; HL tenía la dirección en la tabla, O EL SEGMENTO ahora DE tiene
@@ -1296,11 +1318,13 @@ PROC4_2:
         
         PUSH    IY
         POP     BC          ; Salva el IY del procedimiento en BC
+;HASTA AQUI HL' TIENE LA DIRECCION
+		
         EXX                 ; Cambia al juego de registros alternativo
         EX      AF,AF'
         XOR     A           ; Contador de parámetros a 0
         EX      AF,AF'
-        
+
         CALL    SAVLOC      ; *** CRUCIAL ***: Guarda los valores actuales de las 
                             ; variables que se van a usar como locales para restaurarlas luego.
         
@@ -1311,10 +1335,26 @@ RETCHK: EX      AF,AF'      ; Verifica el cierre de paréntesis
         CALL    BRAKET      ; Busca el ')'
         EXX
         PUSH    BC
-        POP     IY          ; Restaura IY al código del procedimiento
+;AQUI EL ANTERIOR HL DEBERÍA IR A IY 
+        POP     IY          ; Restaura IY al código del procedimiento....
         PUSH    HL          ; Salva el puntero de retorno
+		;comprobamos que la linea de ejecucion entá en el buffer
+		AND     A
+		LD      HL,CONTEXT_COPY
+		LD      BC,IY
+		SBC     HL,BC
+		LD      A,H
+		OR      A
+		JP      Z,EXEC_REMOTE
+		POP HL
+		PUSH HL
+;   ARGUE
+;   Inputs: DE addresses parameter list 
+;           IY addresses dummy variable list
+;           IX addresses RETURNed parameter data block
         CALL    ARGUE       ; *** ASIGNA *** los valores evaluados a las variables locales.
         POP     HL
+
 
 ; --- EL "FIX" DE SEGURIDAD (BIT 4) ---
 ; Russell aquí hace algo muy listo: si una variable se pasa por referencia (RETURN),
@@ -1339,7 +1379,9 @@ PROC5:  LD      (HL),E      ; Guarda el "puntero de retorno" definitivo en la pi
         DEC     HL
         LD      (HL),E
 
-XEQGO:  JP      XEQ         ; ¡SALTAMOS AL INTERPRETE PARA EJECUTAR EL DEF PROC!
+XEQGO:  
+		JP      XEQ         ; ¡SALTAMOS AL INTERPRETE PARA EJECUTAR EL DEF PROC!
+
 
 ;
 LOCERR:	INC	IY

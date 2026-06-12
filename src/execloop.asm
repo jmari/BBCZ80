@@ -9,7 +9,7 @@
     PUBLIC  COPY_BUFFER_TO_P2
     PUBLIC  COPY_ACTIVE_CONTEXT_TO_P2
     PUBLIC  COPY_P2_TO_ACTIVE_CONTEXT
-	PUBLIC  INITIALIZE_SEGMENT_CONTEXT
+	PUBLIC  INIT_CONTEXT_IN_A_SEGMENT
     PUBLIC  CONTEXT_COPY
 	
     PUBLIC  NEWLIN
@@ -17,6 +17,7 @@
     PUBLIC  XEQ0
     PUBLIC  XEQ1
     PUBLIC  END
+    PUBLIC  EXEC_REMOTE
 
     EXTERN ALLOCATE_SEGMENT         ;MAPPER.ASM
     EXTERN SELECT_SEGMENT_P2        ;MAPPER.ASM
@@ -42,6 +43,7 @@
     EXTERN  DSRCH   ; DSRCH
     EXTERN  CURLIN  ; DATA.ASM
     EXTERN  CMDTAB  ; EXEC.ASM
+    EXTERN  ARGUE   ;EXEC.ASM
     ;---
     EXTERN	TELSE
 	EXTERN  MELSE	;ELSE
@@ -133,7 +135,7 @@ COPY_P2_TO_ACTIVE_CONTEXT:
     RET 
 
 
-INITIALIZE_SEGMENT_CONTEXT:
+INIT_CONTEXT_IN_A_SEGMENT:
     LD  IX,(HIMEM)
     LD  (START_OF_P2 + USER - ACCS + 1),IX ;Guarda HIMEM del contexto al final de la tabla (+1 y +2)
     LD  IY,START_OF_P2 + USER - ACCS +3
@@ -143,14 +145,28 @@ INITIALIZE_SEGMENT_CONTEXT:
     ADD IX,SP
     LD (HIMEM),IX  ;nuevo HIMEM es el SP del contexto anterior
     RET
+
+
 RESTORE_HIMEM:
- 
     LD  IX,(HIMEM)  ;nuevo HIMEM es el SP del contexto anterior
     LD  SP,IX
     LD  IX, (START_OF_P2 + USER - ACCS + 1) ;recuperamos HIMEM del contexto anterior
     LD (HIMEM),IX  ;nuevo HIMEM es el SP del contexto anterior
     JP BACK_TO_P2 
 
+; IY execution address in the program
+ACTIVATE_CONTEXT_IN_A_SEGMENT:
+    PUSH IY
+    LD  IX,(HIMEM)
+    LD  (START_OF_P2 + USER - ACCS + 1),IX ;Guarda HIMEM del contexto al final de la tabla (+1 y +2)
+    LD  IY,START_OF_P2 + USER - ACCS +3
+    LD  (PAGE),IY ; CARGAMOS EL PROGRAMA A PARTIR DEL INICIO DE LA PAGINA 
+    POP IY
+    LD  (CURLIN),IY
+    LD  IX,2
+    ADD IX,SP
+    LD (HIMEM),IX  ;nuevo HIMEM es el SP del contexto anterior
+    RET
 ; =============================================================================
 ; COMANDO INSTALL: Clon funcional de CHAIN para inicializar el sistema de carga
 ; =============================================================================
@@ -185,7 +201,7 @@ SWAP_SEGMENT:
     CALL COPY_ACTIVE_CONTEXT_TO_P2
     ; --- PARTE 2: Limpieza de Pila y Carga ---  
 INIT_CONTEXT:
-    CALL INITIALIZE_SEGMENT_CONTEXT
+    CALL INIT_CONTEXT_IN_A_SEGMENT
     CALL LOAD0       ; Carga el archivo desde disco/dispositivo a la dirección PAGE
     ;JR force_fin
     ; --- PARTE 4: El punto crítico del Heap ---
@@ -313,9 +329,37 @@ _ERROR:
 
 
 ; Inputs: A is the segment where the library is installed in
-ACTIVATE_CONTEXT:
-	CALL SELECT_SEGMENT_P2
-	CALL COPY_P2_TO_BUFFER       ;EN P2 ESTABA EL CONTEXTO ANTERIOR, LO CARGAMOS DE NUEVO
-	CALL COPY_ACTIVE_CONTEXT_TO_P2   ;EN BUFFER ESTA EL CONTEXTO ACTIVO
-    CALL COPY_BUFFER_TO_ACTIVE_CONTEXT       ;EN P2 ESTABA EL CONTEXTO ANTERIOR, LO CARGAMOS DE NUEVO
+;ACTIVATE_CONTEXT:
+;	CALL SELECT_SEGMENT_P2
+;	CALL COPY_P2_TO_BUFFER       ;EN P2 ESTABA EL CONTEXTO ANTERIOR, LO CARGAMOS DE NUEVO
+;	CALL COPY_ACTIVE_CONTEXT_TO_P2   ;EN BUFFER ESTA EL CONTEXTO ACTIVO
+;    CALL COPY_BUFFER_TO_ACTIVE_CONTEXT       ;EN P2 ESTABA EL CONTEXTO ANTERIOR, LO CARGAMOS DE NUEVO
+;    RET
 	
+
+; venimos de un PROC 
+EXEC_REMOTE:
+    ;RECUPERAMOS PUNTERO DE llamada a la funcion
+    PUSH DE  ;guardamos para la ejecucion de argue
+    PUSH IX  ;  "
+    PUSH IY  ;  "
+    CALL GET_CURRENT_SEGMENT_P2
+    PUSH AF       ;Guarda el segmento activo en la pila
+;SWAP_SEGMENT:
+	LD      A,(SEGMENT_COUNTER) ; segmento DE LA LIBRERIA
+    CALL SELECT_SEGMENT_P2  
+    CALL COPY_ACTIVE_CONTEXT_TO_P2 ;copiamos el contexto al segmento destino
+    ; --- PARTE 2: Limpieza de Pila y Carga ---  
+    ; INIT_CONTEXT:
+
+    POP IY
+    CALL ACTIVATE_CONTEXT_IN_A_SEGMENT ;activamos el contexto con los valores adecuados al segmento P2 y el IY facilitado
+    ; --- PARTE 5: Preparación de punteros de datos y programa ---
+   
+   ;TENEMOS QUE HACER LO QUE EL PROC PARA LOCALIZAR EL PROC DE VERDAD
+   
+    POP AF
+    POP IX
+    POP DE
+    CALL ARGUE
+    JP XEQ0
