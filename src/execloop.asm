@@ -348,10 +348,10 @@ EXEC_REMOTE:
 ;SWAP_SEGMENT:
 	LD      A,(SEGMENT_COUNTER) ; segmento DE LA LIBRERIA
     CALL SELECT_SEGMENT_P2  
-    CALL COPY_ACTIVE_CONTEXT_TO_P2 ;copiamos el contexto al segmento destino
+    CALL COPY_ACTIVE_CONTEXT_TO_BUFFER ;copiamos el contexto al segmento destino
+    CALL COPY_P2_TO_ACTIVE_CONTEXT 
     ; --- PARTE 2: Limpieza de Pila y Carga ---  
     ; INIT_CONTEXT:
-
     POP IY
     CALL ACTIVATE_CONTEXT_IN_A_SEGMENT ;activamos el contexto con los valores adecuados al segmento P2 y el IY facilitado
     ; --- PARTE 5: Preparación de punteros de datos y programa ---
