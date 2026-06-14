@@ -1,4 +1,5 @@
     PUBLIC  INSTALL ; THIS IS THE COMMAND WE IMPLEMENT IN THIS MODULE
+    PUBLIC  SEGMENT_COUNTER
     PUBLIC  RESERVED_SEGMENTS
     PUBLIC  TOTAL_SEGMENTS
     PUBLIC  MAPPER_JUMP_TABLE
@@ -17,11 +18,15 @@
     PUBLIC  XEQ0
     PUBLIC  XEQ1
     PUBLIC  END
+    PUBLIC  ENDIM
     PUBLIC  EXEC_REMOTE
+    PUBLIC  BACK_FROM_ENDPRO
+
 
     EXTERN ALLOCATE_SEGMENT         ;MAPPER.ASM
     EXTERN SELECT_SEGMENT_P2        ;MAPPER.ASM
     EXTERN GET_CURRENT_SEGMENT_P2   ;MAPPER.ASM
+    
     ;-------------------------------------------
     EXTERN  EXPRS   ; EVAL.ASM
     EXTERN  HIMEM   ; DATA.ASM
@@ -44,6 +49,7 @@
     EXTERN  CURLIN  ; DATA.ASM
     EXTERN  CMDTAB  ; EXEC.ASM
     EXTERN  ARGUE   ;EXEC.ASM
+    EXTERN  DEFPROC_SEG;EXEC.ASM
     ;---
     EXTERN	TELSE
 	EXTERN  MELSE	;ELSE
@@ -51,7 +57,7 @@
 	EXTERN  WHEN	;WHEN
 	EXTERN  TOTHERWISE
     ;----
- 
+    EXTERN  BRAKET
     EXTERN  CR
     EXTERN  NXT
     EXTERN  LET0
@@ -154,19 +160,7 @@ RESTORE_HIMEM:
     LD (HIMEM),IX  ;nuevo HIMEM es el SP del contexto anterior
     JP BACK_TO_P2 
 
-; IY execution address in the program
-ACTIVATE_CONTEXT_IN_A_SEGMENT:
-    PUSH IY
-    LD  IX,(HIMEM)
-    LD  (START_OF_P2 + USER - ACCS + 1),IX ;Guarda HIMEM del contexto al final de la tabla (+1 y +2)
-    LD  IY,START_OF_P2 + USER - ACCS +3
-    LD  (PAGE),IY ; CARGAMOS EL PROGRAMA A PARTIR DEL INICIO DE LA PAGINA 
-    POP IY
-    LD  (CURLIN),IY
-    LD  IX,2
-    ADD IX,SP
-    LD (HIMEM),IX  ;nuevo HIMEM es el SP del contexto anterior
-    RET
+
 ; =============================================================================
 ; COMANDO INSTALL: Clon funcional de CHAIN para inicializar el sistema de carga
 ; =============================================================================
@@ -260,7 +254,7 @@ XEQ1:
 ;
 
 ENDIM:	
-    CALL GET_CURRENT_SEGMENT_P2
+   ; CALL GET_CURRENT_SEGMENT_P2
    ; IF ERROR OR ESC WE ARE HERE WE CAN NOT CHANGE CONTEXT..
    ; WE SHOULD EDIT AND FIX THE PROBLEM...SAVE AND COM BACK USING END
     PUSH	IY
@@ -328,38 +322,48 @@ _ERROR:
     JP ERROR
 
 
-; Inputs: A is the segment where the library is installed in
-;ACTIVATE_CONTEXT:
-;	CALL SELECT_SEGMENT_P2
-;	CALL COPY_P2_TO_BUFFER       ;EN P2 ESTABA EL CONTEXTO ANTERIOR, LO CARGAMOS DE NUEVO
-;	CALL COPY_ACTIVE_CONTEXT_TO_P2   ;EN BUFFER ESTA EL CONTEXTO ACTIVO
-;    CALL COPY_BUFFER_TO_ACTIVE_CONTEXT       ;EN P2 ESTABA EL CONTEXTO ANTERIOR, LO CARGAMOS DE NUEVO
-;    RET
-	
+BACK_FROM_ENDPRO:
+    CALL COPY_ACTIVE_CONTEXT_TO_P2   ;EN BUFFER ESTA EL CONTEXTO ACTIVO
+    CALL COPY_BUFFER_TO_ACTIVE_CONTEXT       ;EN P2 ESTABA EL CONTEXTO ANTERIOR, LO CARGAMOS DE NUEVO
+               ; Por algún motivo la pila tiene un word de más
+    POP AF                   ;recupera el segmento activo
+    CALL SELECT_SEGMENT_P2
+    POP IY
+    INC IY
+    JP	XEQ0
 
 ; venimos de un PROC 
 EXEC_REMOTE:
     ;RECUPERAMOS PUNTERO DE llamada a la funcion
+    PUSH HL
     PUSH DE  ;guardamos para la ejecucion de argue
     PUSH IX  ;  "
-    PUSH IY  ;  "
+    PUSH IY
     CALL GET_CURRENT_SEGMENT_P2
-    PUSH AF       ;Guarda el segmento activo en la pila
+    
+    LD  C,A       ;Guarda el segmento activo en C
+    EXX ;conserbar C
 ;SWAP_SEGMENT:
-	LD      A,(SEGMENT_COUNTER) ; segmento DE LA LIBRERIA
+	LD  A,(DEFPROC_SEG) ; segmento DE LA LIBRERIA
     CALL SELECT_SEGMENT_P2  
-    CALL COPY_ACTIVE_CONTEXT_TO_BUFFER ;copiamos el contexto al segmento destino
-    CALL COPY_P2_TO_ACTIVE_CONTEXT 
+    LD  IX,(CURLIN); cargamos  la linea despues de DEF PROC en el segmento (esta en CURLIN) en IX
+    POP IY ;IX<-IY  
+    LD  (CURLIN),IY
+    CALL COPY_ACTIVE_CONTEXT_TO_BUFFER 
+    CALL COPY_P2_TO_ACTIVE_CONTEXT        ;copiamos el contexto al segmento destino
     ; --- PARTE 2: Limpieza de Pila y Carga ---  
-    ; INIT_CONTEXT:
-    POP IY
-    CALL ACTIVATE_CONTEXT_IN_A_SEGMENT ;activamos el contexto con los valores adecuados al segmento P2 y el IY facilitado
-    ; --- PARTE 5: Preparación de punteros de datos y programa ---
-   
-   ;TENEMOS QUE HACER LO QUE EL PROC PARA LOCALIZAR EL PROC DE VERDAD
-   
-    POP AF
+    ;TENEMOS QUE HACER LO QUE EL PROC PARA LOCALIZAR EL PROC DE VERDAD
+    LD  (CURLIN),IX
+    EXX
+    LD A,C
+    LD IY,IX
     POP IX
     POP DE
+    POP HL
     CALL ARGUE
-    JP XEQ0
+    POP HL
+    ; --- PARTE 5: Preparación de punteros de datos y programa ---
+    LD      (HL),E      ; Guarda el "puntero de retorno" definitivo en la pila.
+    INC     HL
+    LD      (HL),D
+    JP      XEQ    

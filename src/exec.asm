@@ -52,6 +52,7 @@
 	PUBLIC  TOTHERWISE
 	PUBLIC	LET0
 	PUBLIC  ARGUE
+	PUBLIC  DEFPROC_SEG
 ;----------------------------------------------------
 	EXTERN  RESERVED_SEGMENTS  		 ;EXEC_LOOP.ASM
     EXTERN  TOTAL_SEGMENTS         	 	 ;EXEC_LOOP.ASM      
@@ -63,6 +64,8 @@
 	EXTERN  GET_CURRENT_SEGMENT_P2
 	EXTERN  INIT_CONTEXT_IN_A_SEGMENT
 	EXTERN  CONTEXT_COPY
+	EXTERN SEGMENT_COUNTER
+	EXTERN BACK_FROM_ENDPRO
 	
 	
 
@@ -1076,6 +1079,7 @@ FNCHK	EQU	$
 ; AF viene con el flag de si es un "ON PROC" (para saltos múltiples).
 
 CURRENT_SEG:        DEFB 0
+DEFPROC_SEG:        DEFB 0
 RESTORE_CURRENT_CONTEXT:
 		;RECUPERAMOS EL SEGMENTO ORIGINAL (DONDE ESTAN LAS VARIABLES)
 		; SOLO si son diferentes
@@ -1089,16 +1093,15 @@ CREATE_PROC_MARK:
 		PUSH    HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
 		PUSH    IY  ; contiene la posicion despues de PROCname
 		LD      L,(IX-1) ;antes de la lista de segmentos está el contador auxiliar
-		LD 		A,(TOTAL_SEGMENTS)
+		LD 		A,(TOTAL_SEGMENTS) 
 		CP		L
-
-		JR      C,same_segment
+		JR      C,SAME_SEG
 		LD      A,L
 		DEC     A   ; AND ONE LESS BECAUSE WE MAKE A LOOP MORE FOR THE MAIN SEGMENT THAT IS NOT RESERVED
-		JR      different_segment
-same_segment:
+		JR      DIFF_SEG
+SAME_SEG:
 		XOR     A
-different_segment:
+DIFF_SEG:
 		LD      HL, RESERVED_SEGMENTS
 		ADD     HL,A
 		LD      A,(HL)
@@ -1149,6 +1152,7 @@ COPY_DEFPROC_TO_BUFFER:
 		;TRABAJAMOS CON LOS  REGISTROS '
 		POP    IX ; HL TENIA la direccion del heap
 		LD     HL,(IX)
+		LD     (CONTEXT_COPY+CURLIN-ACCS),HL        ;save next exec line un CURLIN pointer
 		LD     DE, CONTEXT_COPY   ;copy of input Buffer
 		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...da igual lo que tenga despues
 		LDIR
@@ -1240,6 +1244,7 @@ LOAD_NEXT_LIB:
 		DEC     A   ;recuerda a tiene 1 de mas   
 		ADD     HL, A
 		LD      A,(HL) ;a tiene el nº de segmento ahora
+		LD      (DEFPROC_SEG),A
 		CALL	SELECT_SEGMENT_P2
 		CALL 	COPY_P2_TO_ACTIVE_CONTEXT
 		CALL    INIT_CONTEXT_IN_A_SEGMENT
@@ -1268,8 +1273,11 @@ GOTO_PROC4:
 		POP     BC
 		JR      NC,PROC4
 		PUSH    BC
+		LD      IY, (CONTEXT_COPY+CURLIN-ACCS)
+		ADD     IY,DE  
+		LD      (CONTEXT_COPY+CURLIN-ACCS),IY
 		POP     IY      ;porque esta aqui ?¿?
-
+		
 		ADD     IY,DE   ;SALTA EL PROC_name (DE LO DEVUELVE  EN CREATE_PROC_MARK)
 		
 		
@@ -1291,7 +1299,7 @@ PROC4:
 		OR		A
 		JR      NZ,PROC4_1
 		LD 		A,L
-		LD      (RESERVED_SEGMENTS -1),A
+		LD      (DEFPROC_SEG),A   ;Guardamos el segmento donde esta el DEF PROCname
 		LD      DE, CONTEXT_COPY  ;DEFPROC IS IN input Buffer
 		JR      PROC4_2
 PROC4_1:
@@ -1318,8 +1326,6 @@ PROC4_2:
         
         PUSH    IY
         POP     BC          ; Salva el IY del procedimiento en BC
-;HASTA AQUI HL' TIENE LA DIRECCION
-		
         EXX                 ; Cambia al juego de registros alternativo
         EX      AF,AF'
         XOR     A           ; Contador de parámetros a 0
@@ -1335,7 +1341,6 @@ RETCHK: EX      AF,AF'      ; Verifica el cierre de paréntesis
         CALL    BRAKET      ; Busca el ')'
         EXX
         PUSH    BC
-;AQUI EL ANTERIOR HL DEBERÍA IR A IY 
         POP     IY          ; Restaura IY al código del procedimiento....
         PUSH    HL          ; Salva el puntero de retorno
 		;comprobamos que la linea de ejecucion entá en el buffer
@@ -1348,10 +1353,6 @@ RETCHK: EX      AF,AF'      ; Verifica el cierre de paréntesis
 		JP      Z,EXEC_REMOTE
 		POP HL
 		PUSH HL
-;   ARGUE
-;   Inputs: DE addresses parameter list 
-;           IY addresses dummy variable list
-;           IX addresses RETURNed parameter data block
         CALL    ARGUE       ; *** ASIGNA *** los valores evaluados a las variables locales.
         POP     HL
 
@@ -1470,7 +1471,31 @@ ENDPRO:	POP	BC
 	LD	A,13
 	JP	ERROR		;"No PROC"
 ;
-ENDPR1:	POP	IY
+ENDPR1:	
+
+		PUSH    HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
+		PUSH    DE
+		PUSH IX
+		LD      IX, SEGMENT_COUNTER ;(contiene el segmento)
+		LD      L,(IX)
+		LD 		A,(TOTAL_SEGMENTS)
+		CP		L
+		JR      C,SAME_SEG2
+		LD HL, (CONTEXT_COPY+PAGE-ACCS) ; RESTABLECEMOS PARA QUE HAGA EL CAMBIO DE CONTEXTO
+		LD (PAGE),HL
+		POP IX
+		POP DE
+		POP HL 
+		POP	IY
+		LD A,(CURRENT_SEG)
+		PUSH IY
+		PUSH AF
+		JP   BACK_FROM_ENDPRO
+SAME_SEG2:
+	POP IX
+	POP DE
+	POP HL 
+	POP	IY
 XEQGO6:	JP	XEQ
 ;
 ;INPUT #channel,var,var...
