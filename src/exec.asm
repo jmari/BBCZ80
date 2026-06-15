@@ -1276,8 +1276,7 @@ GOTO_PROC4:
 		LD      IY, (CONTEXT_COPY+CURLIN-ACCS)
 		ADD     IY,DE  
 		LD      (CONTEXT_COPY+CURLIN-ACCS),IY
-		POP     IY      ;porque esta aqui ?¿?
-		
+		POP     IY      ;IY falso DEL BUFFER 
 		ADD     IY,DE   ;SALTA EL PROC_name (DE LO DEVUELVE  EN CREATE_PROC_MARK)
 		
 		
@@ -1344,7 +1343,6 @@ RETCHK: EX      AF,AF'      ; Verifica el cierre de paréntesis
         POP     IY          ; Restaura IY al código del procedimiento....
         PUSH    HL          ; Salva el puntero de retorno
 		;comprobamos que la linea de ejecucion entá en el buffer
-		AND     A
 		LD      HL,CONTEXT_COPY
 		LD      BC,IY
 		SBC     HL,BC
@@ -1473,28 +1471,28 @@ ENDPRO:	POP	BC
 ;
 ENDPR1:	
 
-		PUSH    HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
-		PUSH    DE
-		PUSH IX
-		LD      IX, SEGMENT_COUNTER ;(contiene el segmento)
-		LD      L,(IX)
-		LD 		A,(TOTAL_SEGMENTS)
-		CP		L
-		JR      C,SAME_SEG2
-		LD HL, (CONTEXT_COPY+PAGE-ACCS) ; RESTABLECEMOS PARA QUE HAGA EL CAMBIO DE CONTEXTO
-		LD (PAGE),HL
-		POP IX
-		POP DE
-		POP HL 
-		POP	IY
-		LD A,(CURRENT_SEG)
-		PUSH IY
-		PUSH AF
-		JP   BACK_FROM_ENDPRO
-SAME_SEG2:
+	PUSH    HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
+	PUSH    DE
+	PUSH IX
+	LD      IX, SEGMENT_COUNTER ;(contiene el segmento)
+	LD      L,(IX)
+	LD 		A,(TOTAL_SEGMENTS)
+	CP		L
+	JR      C,SAME_SEG2
+	LD HL, (CONTEXT_COPY+PAGE-ACCS) ; RESTABLECEMOS PARA QUE HAGA EL CAMBIO DE CONTEXTO
+	LD (PAGE),HL
 	POP IX
 	POP DE
 	POP HL 
+	POP	IY
+	LD A,(CURRENT_SEG)
+	PUSH IY
+	PUSH AF
+	JP   BACK_FROM_ENDPRO
+SAME_SEG2:
+	POP IX
+	POP DE
+	POP HL
 	POP	IY
 XEQGO6:	JP	XEQ
 ;
