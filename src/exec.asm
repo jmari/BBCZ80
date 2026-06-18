@@ -1259,7 +1259,7 @@ LOAD_NEXT_LIB:
        
 
 GOTO_PROC4:
-
+		;no DEC(IX-1) do IX should be one more than allocated segments
 		LD      IX, SEGMENT_COUNTER ;(contiene el segmento)
 		LD      E,(IX)
 		LD 		A,(TOTAL_SEGMENTS)
