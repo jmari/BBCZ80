@@ -1260,9 +1260,11 @@ LOAD_NEXT_LIB:
 
 GOTO_PROC4:
 
-		LD      A, (TOTAL_SEGMENTS)
-		OR      A
-		JR      Z, PROC4
+		LD      IX, SEGMENT_COUNTER ;(contiene el segmento)
+		LD      E,(IX)
+		LD 		A,(TOTAL_SEGMENTS)
+		CP		E
+		JR      C,PROC4   ;no hemos entrado en el bucle
 		; ANTES DE RESTAURAR SEGMENTO 
 		; HAY QUE COPIAR LA CABECERA DE DEF PROC_name(....)
 		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
