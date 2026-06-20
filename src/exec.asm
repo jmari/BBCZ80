@@ -1178,12 +1178,13 @@ PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack O
 		JR 		Z,PROC1_LOOP
 		CALL   	COPY_ACTIVE_CONTEXT_TO_BUFFER   ;HAY LIBRERIAS ASI QUE GUARDAMOS EL CONTEXTO
 		CALL    COPY_PROC_TO_BUFFER
+
+PROC1_LOOP:
+		;---
 		INC    	(IX-1)    ;one loop more, one for each segment and one for current context
 		                 ;IMPORTANT! el contexto actual si esta en una LIB lo checkeamos 2 veces!
 						 ;una libreria solo debería poder usar las librrias instaladas por ella misma
 						 ;o sea segmentos posteriores
-PROC1_LOOP:
-		;---
 		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
         POP     BC      ; Recupera el puntero de texto original
         JP      Z,PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
@@ -1264,11 +1265,14 @@ GOTO_PROC4:
 		LD      E,(IX)
 		LD 		A,(TOTAL_SEGMENTS)
 		CP		E
-		JR      C,PROC4   ;no hemos entrado en el bucle
+		JR      NC,NOT_IN_THE_SAME_SEGMENT   ;no hemos entrado en el bucle
+		INC     SP   ;DESCARTAMOS EL IY DEL LOOP
+		INC     SP
+		JR      PROC4
 		; ANTES DE RESTAURAR SEGMENTO 
 		; HAY QUE COPIAR LA CABECERA DE DEF PROC_name(....)
 		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
-		 
+NOT_IN_THE_SAME_SEGMENT:
 		CALL    COPY_DEFPROC_TO_BUFFER
 		CALL    CREATE_PROC_MARK 
 		;IY de la llamada ORIGINAL NO LO QUEREMOS EN IY
