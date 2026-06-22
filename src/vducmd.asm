@@ -463,15 +463,18 @@ POINT:	CALL	EXPRI
 	EXX
 	POP	DE
 	CALL	BRAKET
-	LD	IX,SCRAP
-	LD	(IX+0),E
-	LD	(IX+1),D
-	LD	(IX+2),L
-	LD	(IX+3),H
-	LD	HL,SCRAP
-	LD	A,9
-	CALL	OSWORD
-	LD	A,(IX+4)
+	;replaced system call by VDU 128 cmd
+	LD	A,128
+	CALL	WRITE_VDU
+	LD	A,E   
+	CALL	WRITE_VDU
+	LD	A,D  
+	CALL	WRITE_VDU
+	LD	A,L
+	JP		WRITE_VDU 
+	LD	A,H
+	JP		WRITE_VDU  ;writes the vdu command  and choords
+	;colour should be in A
 	LD	L,A
 	ADD	A,1
 	SBC	A,A

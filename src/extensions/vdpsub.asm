@@ -41,6 +41,7 @@
 	PUBLIC	read_vdp_status_register
 	PUBLIC 	wait_vdp_ready
 	PUBLIC	plotSinglePoint
+	PUBLIC	pointSinglePoint
 	PUBLIC	chColors
 ; UTILITIES
 	PUBLIC	CPL_HL
@@ -306,18 +307,64 @@ plotSinglePoint:
 	out	(c),h
 	out	(c),e		;end Y
 	out	(c),d
-	ld a,(ix+13)		;Color
-	out	(VDP_CTRL_PORT),a
+	ld a,(ix+13)		    
+	out	(VDP_CTRL_PORT),a   ;R:40 Color
 	ld	a,128+44
-	out	(VDP_CTRL_PORT),a	        ;R#44 := Color
-	ld a,(ix+14)		;logical op
-	or	01010000b		;cmd pset
+	out	(VDP_CTRL_PORT),a   ;R#44 := Color?¿
+	ld a,(ix+14)		    ;logical op
+	or	01010000b		    ;cmd pset
 	out	(VDP_CTRL_PORT),a
 	ld	a,128+46
-	out	(VDP_CTRL_PORT),a	        ;R#44 := Color
+	out	(VDP_CTRL_PORT),a	 ;R#46 
 	pop ix
 	ret
 
+
+pointSinglePoint:
+	push ix
+	ld ix,StartX
+	call	wait_vdp_ready
+	ld	a,36
+	out	(VDP_CTRL_PORT),a
+	ld	a,128+17
+	out	(VDP_CTRL_PORT),a	;R#17 := 36
+	ld	c,VDP_INDR_PORT
+	xor a
+	ld hl,(ix+4)
+	ld de,(ix+6)
+	out	(c),l		;end X R#36 
+	out	(c),h       ;      R#37 
+	out	(c),e		;end Y R#38
+	out	(c),d       ;      R#39 
+	xor a		    
+	out	(VDP_CTRL_PORT),a ;R#40
+    out	(VDP_CTRL_PORT),a ;R#41
+    out	(VDP_CTRL_PORT),a ;R#42
+    out	(VDP_CTRL_PORT),a ;R#43
+    out	(VDP_CTRL_PORT),a ;R#44
+	out	(VDP_CTRL_PORT),a ;R#45 Argumentos (Dirección de lectura = 0)
+	ld a,(ix+14)		;logical op
+	or	01000000b		;cmd point
+	out	(VDP_CTRL_PORT),a ;R#46 Comando POINT (%0100xxxx)
+    call	wait_vdp_ready
+    ; 6. Leer el resultado en el Registro de Estado 7
+    ld a, 7             ; Seleccionar Registro de Estado 7
+    out (VDP_CTRL_PORT), a
+    ld a, 128+15        ; Escribir en R15
+    out (VDP_CTRL_PORT), a
+    in a, (VDP_CTRL_PORT)         ; A = Color devuelto por el VDP
+    
+    push af             ; Guardamos el color un momento
+    ; 7. BUENA PRÁCTICA: Restaurar R15 a Registro de Estado 0
+    ; Si dejas el VDP apuntando al SR7, las interrupciones del sistema
+    ; o BASIC podrían fallar al leer los eventos del teclado/vblank.
+    xor a
+    out (VDP_CTRL_PORT), a
+    ld a, 128+15
+    out (VDP_CTRL_PORT), a
+    pop af              ; Recuperamos el color en A
+	pop ix
+	ret
 
 ;changes fore an back color (input aA)
 chColors:

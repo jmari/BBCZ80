@@ -45,6 +45,7 @@
 	EXTERN	read_vdp_status_register
 	EXTERN 	wait_vdp_ready
 	EXTERN	plotSinglePoint
+	EXTERN	pointSinglePoint
 	EXTERN	chColors
 
 
@@ -1015,6 +1016,27 @@ PLOT_LINE:
 		LD HL,(EndY)
 		LD (GRPACY),HL
 		RET
+
+GET_POINT:
+	BIT 7,A 	;(BIT 7 )
+	JP NZ,PLOT_POINT
+	AND 00000011B
+	CP 0 					;move relative command
+	JR Z, MOVETO
+	;CMD IMPLEMENTATION
+	GET_POINT_BGC:
+		LD BC, (GRPACX)
+		LD (StartX), BC
+		LD BC, (GRPACY)
+		LD (StartY), BC
+		LD (EndX),DE
+		LD (EndY),HL
+		CALL pointSinglePoint
+		
+	RET
+
+
+
 PLOT_POINT:
 	BIT 5,A 	;(BIT 6 AND 5 )
 	JP NZ,PLOT_RECTANGLE
