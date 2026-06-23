@@ -975,6 +975,26 @@ PLOT_ABSOLUTE:
 	CALL    CPL_HL
 	
 DO_NOT_NEED_INVERT:	  ; HL contiene Y escalado e invertido, H siempre es 0
+GET_POINT:
+	LD A,(VDU_ARGV+4) 		;loads plot mode 
+	BIT 7,A 	;(BIT 7 )
+	JP Z,BIT7_OFF
+	AND 00000011B
+	CP 0 					;move relative command
+	JR Z, MOVETO
+	;CMD IMPLEMENTATION
+	GET_POINT_BGC:
+		LD BC, (GRPACX)
+		LD (StartX), BC
+		LD BC, (GRPACY)
+		LD (StartY), BC
+		LD (EndX),DE
+		LD (EndY),HL
+		CALL pointSinglePoint
+		
+	RET
+
+BIT7_OFF:
 	LD A,(VDU_ARGV+4) 		;loads plot mode AGAIN
 	BIT 6,A 
 	JR NZ,PLOT_POINT
@@ -1017,23 +1037,7 @@ PLOT_LINE:
 		LD (GRPACY),HL
 		RET
 
-GET_POINT:
-	BIT 7,A 	;(BIT 7 )
-	JP NZ,PLOT_POINT
-	AND 00000011B
-	CP 0 					;move relative command
-	JR Z, MOVETO
-	;CMD IMPLEMENTATION
-	GET_POINT_BGC:
-		LD BC, (GRPACX)
-		LD (StartX), BC
-		LD BC, (GRPACY)
-		LD (StartY), BC
-		LD (EndX),DE
-		LD (EndY),HL
-		CALL pointSinglePoint
-		
-	RET
+
 
 
 

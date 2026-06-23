@@ -464,16 +464,8 @@ POINT:	CALL	EXPRI
 	POP	DE
 	CALL	BRAKET
 	;replaced system call by VDU 128 cmd
-	LD	A,128
-	CALL	WRITE_VDU
-	LD	A,E   
-	CALL	WRITE_VDU
-	LD	A,D  
-	CALL	WRITE_VDU
-	LD	A,L
-	JP		WRITE_VDU 
-	LD	A,H
-	JP		WRITE_VDU  ;writes the vdu command  and choords
+	LD	C,129
+	CALL	VDU25_CMD
 	;colour should be in A
 	LD	L,A
 	ADD	A,1

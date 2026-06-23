@@ -275,8 +275,10 @@ _isearch:
 ipalette:    
 	;call	wait_vdp_ready i think we dont need that
 	ld	a,E
+    di
 	out	(VDP_CTRL_PORT),a
 	ld	a,128+16
+    ei
 	out	(VDP_CTRL_PORT),a	   ;R#16 := pysical 
 	ld	c,VDP_INDR_PORT
 	xor a
@@ -307,69 +309,77 @@ plotSinglePoint:
 	out	(c),h
 	out	(c),e		;end Y
 	out	(c),d
-	ld a,(ix+13)		    
-	out	(VDP_CTRL_PORT),a   ;R:40 Color
+	ld a,(ix+13)	
+    di	    
+	out	(VDP_CTRL_PORT),a   ;Color
 	ld	a,128+44
-	out	(VDP_CTRL_PORT),a   ;R#44 := Color?¿
+    ei
+	out	(VDP_CTRL_PORT),a   ;R#44 := Color
 	ld a,(ix+14)		    ;logical op
 	or	01010000b		    ;cmd pset
+    di
 	out	(VDP_CTRL_PORT),a
 	ld	a,128+46
+    ei
 	out	(VDP_CTRL_PORT),a	 ;R#46 
 	pop ix
 	ret
 
 
 pointSinglePoint:
-	push ix
-	ld ix,StartX
-	call	wait_vdp_ready
-	ld	a,36
-	out	(VDP_CTRL_PORT),a
-	ld	a,128+17
-	out	(VDP_CTRL_PORT),a	;R#17 := 36
-	ld	c,VDP_INDR_PORT
-	xor a
-	ld hl,(ix+4)
-	ld de,(ix+6)
-	out	(c),l		;end X R#36 
-	out	(c),h       ;      R#37 
-	out	(c),e		;end Y R#38
-	out	(c),d       ;      R#39 
-	xor a		    
-	out	(VDP_CTRL_PORT),a ;R#40
-    out	(VDP_CTRL_PORT),a ;R#41
-    out	(VDP_CTRL_PORT),a ;R#42
-    out	(VDP_CTRL_PORT),a ;R#43
-    out	(VDP_CTRL_PORT),a ;R#44
-	out	(VDP_CTRL_PORT),a ;R#45 Argumentos (Dirección de lectura = 0)
-	ld a,(ix+14)		;logical op
-	or	01000000b		;cmd point
-	out	(VDP_CTRL_PORT),a ;R#46 Comando POINT (%0100xxxx)
-    call	wait_vdp_ready
-    ; 6. Leer el resultado en el Registro de Estado 7
-    ld a, 7             ; Seleccionar Registro de Estado 7
-    out (VDP_CTRL_PORT), a
-    ld a, 128+15        ; Escribir en R15
-    out (VDP_CTRL_PORT), a
-    in a, (VDP_CTRL_PORT)         ; A = Color devuelto por el VDP
+    push ix
+    ld ix,StartX
+    call    wait_vdp_ready
     
-    push af             ; Guardamos el color un momento
-    ; 7. BUENA PRÁCTICA: Restaurar R15 a Registro de Estado 0
-    ; Si dejas el VDP apuntando al SR7, las interrupciones del sistema
-    ; o BASIC podrían fallar al leer los eventos del teclado/vblank.
+    ; 1. Apuntar R#17 a R#32 (Source X)
+    ld  a,32
+    di
+    out (VDP_CTRL_PORT),a
+    ld  a,128+17
+    ei
+    out (VDP_CTRL_PORT),a   ; R#17 := 32
+    
+    ; 2. Enviar SX y SY por el puerto indirecto ($9B)
+    ; (No necesita DI/EI porque escribir en el $9B es de 1 solo paso)
+    ld  c,VDP_INDR_PORT
+    ld hl,(ix+4)
+    ld de,(ix+6)
+    out (c),l       ; Source X Low  (R#32)
+    out (c),h       ; Source X High (R#33)
+    out (c),e       ; Source Y Low  (R#34)
+    out (c),d       ; Source Y High (R#35)
+    
+    ; 3. Escribir el comando POINT (0x40) en R#46
+    ld  a,01000000b         ; DATO: Comando POINT
+    di
+    out (VDP_CTRL_PORT),a   
+    ld  a,128+46      
+    ei      ; REGISTRO: 46 + 128 (Write bit)
+    out (VDP_CTRL_PORT),a   
+    
+    ; 5. Leer el resultado en el Registro de Estado 7
+    ld a, 7                 ; Seleccionar Registro de Estado 7
+    di
+    out (VDP_CTRL_PORT), a
+    ld a, 128+15            ; Escribir en R15
+    out (VDP_CTRL_PORT), a
+    in a, (VDP_CTRL_PORT)   ; A = Color devuelto por el VDP
+    ex af,af'
     xor a
-    out (VDP_CTRL_PORT), a
-    ld a, 128+15
-    out (VDP_CTRL_PORT), a
-    pop af              ; Recuperamos el color en A
-	pop ix
-	ret
+    out (VDP_CTRL_PORT),a
+    ld a, 128+15  
+    ei
+    out (VDP_CTRL_PORT),a
+    ex af,af
+    pop ix
+    ret
 
 ;changes fore an back color (input aA)
 chColors:
+    di
     OUT  (VDP_CTRL_PORT), A
 	LD   A, 128+7
+    ei
     OUT  (VDP_CTRL_PORT), A
     RET
 
