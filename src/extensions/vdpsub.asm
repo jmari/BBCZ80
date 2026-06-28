@@ -309,7 +309,7 @@ plotSinglePoint:
 	out	(c),h
 	out	(c),e		;end Y
 	out	(c),d
-	ld a,(ix+13)	
+	ld a,(ix+12)	
     di	    
 	out	(VDP_CTRL_PORT),a   ;Color
 	ld	a,128+44
