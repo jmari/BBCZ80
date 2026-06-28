@@ -798,9 +798,9 @@ VDU18:
 	;2	AND	The specified color is bitwise ANDed with the color that is already there.
 	;3	EOR	The specified color is Exclusive-ORed (XORed) with the existing color. This mode is often used for animation as drawing the same shape twice restores the original background.
 	;4	Invert	The existing color is inverted, and the colour parameter is ignored.
-	LD 	A,(VDU_ARGV+1)       ;Logical operation
+	LD 	A,(VDU_ARGV+1)       ;Logical operation is two bytes from Color
 	Ld  IX,Color
-	LD 	(IX+1),A
+	LD 	(IX+2),A
 	LD	DE, SCRMOD   
 	LD	A, (DE)           ;A = display mode
 	CP	8

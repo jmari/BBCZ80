@@ -371,6 +371,7 @@ pointSinglePoint:
     ei
     out (VDP_CTRL_PORT),a
     ex af,af
+    LD L,A  ;RETURN IN L
     pop ix
     ret
 

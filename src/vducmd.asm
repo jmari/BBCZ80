@@ -466,8 +466,8 @@ POINT:	CALL	EXPRI
 	;replaced system call by VDU 128 cmd
 	LD	C,129
 	CALL	VDU25_CMD
-	;colour should be in A
-	LD	L,A
+	;colour should be in L
+	LD	A,L
 	ADD	A,1
 	SBC	A,A
 	LD	H,A

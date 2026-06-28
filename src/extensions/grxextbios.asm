@@ -42,7 +42,6 @@ FUNC_PRESENCE:
 FUNC_VDU_OUT:
     LD   E,L                              ; L is the char to output
     CALL VDU_CMD_W          
-    INC SP                 ; Restore AF from the very beginning
-    INC SP
+    POP AF                 ; Restore AF from the very beginning
     RET
 END_OF_DEVICE_HANDLER:
