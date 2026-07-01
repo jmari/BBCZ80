@@ -165,7 +165,7 @@ VDU_CMD_W:
 	LD   E,1 		; CMD 1 WRITE TO VDU
 	CALL EXTBIO  
 	POP	IY
-	POP	IX
+	POP IX 
 	RET
 
 
@@ -181,13 +181,13 @@ WRITE_VDU:
 ;------and we need that to send logical coords to the VDU
 ;------vdudrv.OSWRCH uses 02H subrutine so only writes to console
 ;------name changed to WRITE_VDU	 
-	PUSH AF
+	;PUSH AF
 	PUSH DE
 	LD  E, A
 	LD 	A ,02H
 	CALL BDOS0	
 	POP DE
-	POP AF
+	;POP AF
 	RET
 
 
@@ -466,8 +466,8 @@ POINT:	CALL	EXPRI
 	;replaced system call by VDU 128 cmd
 	LD	C,129
 	CALL	VDU25_CMD
-	;colour should be in L
-	LD	A,L
+	;colour should be in A
+	LD  L,A
 	ADD	A,1
 	SBC	A,A
 	LD	H,A

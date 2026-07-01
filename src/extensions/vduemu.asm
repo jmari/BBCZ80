@@ -41,6 +41,7 @@
 	EXTERN	CLS
 	EXTERN	CPL_HL
 	EXTERN	findPhysicalColor
+	EXTERN	findLogicalColor
 	EXTERN	ipalette
 	EXTERN	read_vdp_status_register
 	EXTERN 	wait_vdp_ready
@@ -804,12 +805,12 @@ VDU18:
 	LD	DE, SCRMOD   
 	LD	A, (DE)           ;A = display mode
 	CP	8
-	JR	Z, COLOR_256 ;no palette in 256 mode
+	JR	Z, @COLOR_256 ;no palette in 256 mode
 	LD A,(VDU_ARGV)          ;Logical foreground color  byte
 	CALL findPhysicalColor
 	LD (IX),A
 	RET
-	COLOR_256:
+	@COLOR_256:
 	LD A,(VDU_ARGV)          ;Logical foreground color  byte
 	LD (IX),A
  	RET
@@ -991,7 +992,14 @@ GET_POINT:
 		LD (EndX),DE
 		LD (EndY),HL
 		CALL pointSinglePoint
-		
+		LD	DE, SCRMOD   
+		EX  AF,AF'
+		LD	A, (DE)           ;A = display mode
+		CP	8
+		JR	Z, @COLOR_256 
+		EX  AF,AF'
+		call findLogicalColor
+	@COLOR_256:
 	RET
 
 BIT7_OFF:

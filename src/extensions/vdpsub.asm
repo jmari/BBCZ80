@@ -37,6 +37,7 @@
 	PUBLIC 	VSCROLL
 	PUBLIC	CLS
 	PUBLIC	findPhysicalColor
+    PUBLIC 	findLogicalColor
 	PUBLIC	ipalette
 	PUBLIC	read_vdp_status_register
 	PUBLIC 	wait_vdp_ready
@@ -342,8 +343,8 @@ pointSinglePoint:
     ; 2. Enviar SX y SY por el puerto indirecto ($9B)
     ; (No necesita DI/EI porque escribir en el $9B es de 1 solo paso)
     ld  c,VDP_INDR_PORT
-    ld hl,(ix+4)
-    ld de,(ix+6)
+    ld hl,(ix+4)    ;EndX
+    ld de,(ix+6)    ;EndY
     out (c),l       ; Source X Low  (R#32)
     out (c),h       ; Source X High (R#33)
     out (c),e       ; Source Y Low  (R#34)
@@ -371,7 +372,6 @@ pointSinglePoint:
     ei
     out (VDP_CTRL_PORT),a
     ex af,af
-    LD L,A  ;RETURN IN L
     pop ix
     ret
 
@@ -441,6 +441,22 @@ findPhysicalColor:
 	LD A,15
 	SUB B
 	RET
+;-----------Palete copy in ram-----------------
+;  A: physical color
+;  returns A : logical color 
+
+findLogicalColor:
+    LD  HL, PALETTE
+    ADD HL,A
+    ADD HL,A ;x 2 IS A WORD
+    LD  A,(HL)
+    RRA
+	RRA
+	RRA
+	RRA
+    AND 0Fh
+    RET
+
 
 ;*******************TRIANGLE SECTION************************
 ; ==========================================================
@@ -1002,7 +1018,7 @@ SCALE_GRAPHIC_POS:
     ; Subrutina para escalar un valor rango 1280 al ancho del viewport.
     ;
 
-    LD      HL, (VDU_GVXW); Carga el primer entero en el registro HL
+    LD      HL, (VDU_GVXW); Carga el primer entero en el registro HL (graphic viewport X width)
 
 	BIT 	7,D
 	JR      NZ,DE_IS_NEGATIVE
