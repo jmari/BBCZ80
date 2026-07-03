@@ -4,7 +4,7 @@ DOCKER_RUN = docker run -i -u $(shell id -u):$(shell id -g) -v .:/src -w /src $(
 AS = $(DOCKER_RUN) z88dk-z80asm 
 #version estatica vdudrv.asm se exluye 
 SRCS = dist.asm cmos.asm mapper.asm vducmd.asm execloop.asm main.asm exec.asm eval.asm asmb.asm  math.asm data.asm
-SRCSB = ./extensions/grxextbios.asm math.asm ./extensions/vdpsub.asm ./extensions/vduemu.asm 
+SRCSB = ./extensions/grxextbios.asm math.asm ./extensions/luttables.asm ./extensions/vdpsub.asm ./extensions/vduemu.asm 
 SRCSC = ./extensions/ld.asm mapper.asm 
 
 bbcbasic.com: $(SRCS)

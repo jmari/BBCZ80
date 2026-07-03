@@ -129,7 +129,9 @@
 ;  A : logical color 
 ;  returns A: physical color
 
-
+EXTERN lut_scale_256
+EXTERN lut_scale_192
+EXTERN lut_scale_212
 
 ; --- Espacio de datos para comandos VDP simplificados ---
 	StartX:     DW 50   ;0
@@ -1018,66 +1020,94 @@ SCALE_GRAPHIC_POS:
     ; Subrutina para escalar un valor rango 1280 al ancho del viewport.
     ;
 
-    LD      HL, (VDU_GVXW); Carga el primer entero en el registro HL (graphic viewport X width)
-
+    LD      BC, (VDU_GVXW); Carga el ancho del viewport en BC
 	BIT 	7,D
 	JR      NZ,DE_IS_NEGATIVE
-	EXX
-	LD      DE, 0000H  
-	JR 		DE_IS_POSITIVE ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
-                 ; Cambia a los registros alternos HL' tiene el ancho del viewport     
-                          ; DE' contiene la porsicion x
+    RES     1,C
+	;tenemos que obtener el valor escalado de la tabla LUT
+SCALE_DE:
+    LD      HL ,lut_scale_256
+    ADD     HL ,DE
+    LD      E,(HL)
+    BIT     1,B ;resolucion 512?
+    LD      D,0
+    JR      Z, WIDTH256
+WIDTH512:
+    INC     HL
+    INC     HL
+    LD      A,(HL) 
+    ADD     A,E
+    LD      E,A
+    LD      D,0 
+    RL      D
+WIDTH256:  
+    BIT 1,C
+    JR Z,SCALE_1024_TO_VIEPORT_HEIGHT
+    ld a, d         ; Cargar parte alta en A
+    cpl             ; Invertir todos los bits de A (Complemento a 1)
+    ld d, a         ; Guardar de vuelta en D
+    ld a, e         ; Cargar parte baja en A
+    cpl             ; Invertir todos los bits de A
+    ld e, a         ; Guardar de vuelta en E
+    inc de          ; Sumar 1 al registro de 16 bits (Complemento a 2)
+    JR SCALE_1024_TO_VIEPORT_HEIGHT
 DE_IS_NEGATIVE:
-    EXX  
-	LD 		DE, 0FFFFH
-DE_IS_POSITIVE:	
-	;si es negativo debería poner a  ffff los bytes altos!
-	;LD 		DE,FFFFh
-
-	LD      HL, 0000H         ; Pone a cero HL (bits 31 al 16 del nº entero de 32 bits)
-    LD      BC,0          ; exponente tiene que ser 0 en ambos numeros	
-    LD	    A,10
-    CALL    FPP		  ;MULTIPLY          ; HLH'L' contiene la multiplicacion
-
-DIVIDE_BY_1280:
-    EXX     
-    LD      DE, 1280
-    EXX
-    LD      DE, 0         ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
-                          ; Divisor está en DED'É'
-    LD      BC,0          ; exponente tiene que ser 0 en ambos numeros
-    LD	    A,1
-    CALL    FPP		  ;IBDIV         ; after the mul and div the number is 16 bits
-    EXX
-    LD      DE,HL         ; carga H'L' en DE temporalmente
-   
+   ; --- COMPLEMENTO A DOS DE DE ---
+    ld a, d         ; Cargar parte alta en A
+    cpl             ; Invertir todos los bits de A (Complemento a 1)
+    ld d, a         ; Guardar de vuelta en D
+    ld a, e         ; Cargar parte baja en A
+    cpl             ; Invertir todos los bits de A
+    ld e, a         ; Guardar de vuelta en E
+    inc de          ; Sumar 1 al registro de 16 bits (Complemento a 2)
+    SET  1,C
+    JR  SCALE_DE
+    
 
 SCALE_1024_TO_VIEPORT_HEIGHT:
     POP     HL            ; HL es la coordenada y de nuevo
     PUSH    DE                  
-    LD      DE, (VDU_GVXH); Carga el alto del view port
+    LD      BC, (VDU_GVXH); Carga el alto del view port
 	BIT 	7,H
 	JR      NZ,HL_IS_NEGATIVE
-	EXX
-	LD      HL, 0000H  
-	JR 		HL_IS_POSITIVE ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
-HL_IS_NEGATIVE:
-    EXX
-	LD 		HL, 0FFFFH
-HL_IS_POSITIVE:	
-    LD      DE,0
-    LD	    A,10
-    CALL    FPP		      ;MULTIPLY
+    RES     1,C
 
-DIVIDE_BY_1024:
-    EXX
-    LD      DE, 1024
-    EXX
-    LD      DE, 0         ; Divisor está en DED'É'
-    LD      BC,0          ;exponente tiene que ser 0 en ambos numeros
-    LD      A,1
-    CALL    FPP		      ;IBDIV  after the mul and div the number is 16 bits
-    EXX
+SCALE_HL:
+	;tenemos que obtener el valor escalado de la tabla LUT
+    ;212 es 11010100 y 192 11000000
+    BIT     2,C ;resolucion 212?
+    JR      Z, HEIGTH_192
+    LD      DE ,lut_scale_212
+    JR      SCALE_HEIGHT
+HEIGTH_192:
+    LD      DE,lut_scale_192
+SCALE_HEIGHT:
+    ADD     HL ,DE
+    LD      A,(HL)
+    LD      L,A
+    LD      H,0
+    BIT 1,C
+    JR Z,END_SCALE
+    ld a, h         ; Cargar parte alta en A
+    cpl             ; Invertir todos los bits de A (Complemento a 1)
+    ld h, a         ; Guardar de vuelta en D
+    ld a, l         ; Cargar parte baja en A
+    cpl             ; Invertir todos los bits de A
+    ld l, a         ; Guardar de vuelta en E
+    inc hl          ; Sumar 1 al registro de 16 bits (Complemento a 2)
+    JR END_SCALE
+HL_IS_NEGATIVE:
+    ; --- COMPLEMENTO A DOS DE DE ---
+    ld a, h         ; Cargar parte alta en A
+    cpl             ; Invertir todos los bits de A (Complemento a 1)
+    ld h, a         ; Guardar de vuelta en D
+    ld a, l         ; Cargar parte baja en A
+    cpl             ; Invertir todos los bits de A
+    ld l, a         ; Guardar de vuelta en E
+    inc hl          ; Sumar 1 al registro de 16 bits (Complemento a 2)
+    SET  1,C
+    JR  SCALE_HL
+END_SCALE:
     POP     DE            ; carga X escalado 
     POP     BC
     POP     AF
