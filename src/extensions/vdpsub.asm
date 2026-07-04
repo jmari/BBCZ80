@@ -1009,8 +1009,87 @@ IS_TXT_MODE:
 ;                 HL = vertical position (bottom=0..1023)
 ; 	  Destroys: D,E,H,L
 ;
+
+
+; =============================================================================
+; SCALE_GRAPHIC_POS: Filtro de seguridad e interpolación de rutas de escalado
+; Inputs:       DE = Coordenada X original (0..1279 o valor fuera de rango)
+;               HL = Coordenada Y original (0..1023 o valor fuera de rango)
+; Outputs:      DE = Coordenada X escalada
+;               HL = Coordenada Y escalada
+; Destroys:     (DE y HL devuelven los valores ya escalados)
+; =============================================================================
+
 SCALE_GRAPHIC_POS:
-    PUSH AF                         ;STACK AF
+    PUSH    AF
+    PUSH    HL                  ; 1. Guardamos Y original en la pila
+    PUSH    DE                  ; 2. Guardamos X original en la pila
+                                ; Estructura Stack: [Top = X_orig, Next = Y_orig]
+    ; -------------------------------------------------------------------------
+    ; COMPROBACIÓN DEL EJE X (DE) -> Límites: -1179 a 1179
+    ; -------------------------------------------------------------------------
+    LD      HL, 1179            ; Cargamos el límite en HL para operar
+    BIT     7, D                ; ¿Es X (DE) un número negativo?
+    JR      NZ, @X_IS_NEGATIVE
+
+@X_IS_POSITIVE:
+    OR      A                   ; Limpiamos Carry
+    SBC     HL, DE              ; HL = 1179 - X
+    JR      C, @FORCE_INTEGERS  ; Si 1179 < X, hay Carry -> Fuera de rango (X > 1179)
+    JR      @X_IS_SAFE          ; X es menor o igual, continuamos
+
+@X_IS_NEGATIVE:
+    ADD     HL, DE              ; HL = 1179 + X (Equivale a 1179 - |X|)
+    BIT     7, H                ; Comprobamos el signo del resultado directamente en el registro
+                                ; (Nota: ADD HL no actualiza el Flag de Signo, por eso usamos BIT)
+    JR      NZ, @FORCE_INTEGERS ; Si el resultado es negativo, significa que X < -1179
+
+@X_IS_SAFE:
+    ; -------------------------------------------------------------------------
+    ; COMPROBACIÓN DEL EJE Y (HL) -> Límites: -1023 a 1023
+    ; -------------------------------------------------------------------------
+    ; Necesitamos recuperar los valores originales para testear Y, manteniendo la pila intacta
+    POP     DE                  ; DE = X_orig
+    POP     HL                  ; HL = Y_orig
+    PUSH    HL                  ; Los volvemos a dejar en la pila exactamente igual
+    PUSH    DE                  ; para los CALLs finales.
+
+    LD      DE, 1023            ; Cargamos el límite de Y en DE
+    BIT     7, H                ; ¿Es Y (HL) negativo?
+    JR      NZ, @Y_IS_NEGATIVE
+
+@Y_IS_POSITIVE:
+    EX      DE, HL              ; HL = 1023, DE = Y_orig
+    OR      A                   ; Limpiamos Carry
+    SBC     HL, DE              ; HL = 1023 - Y
+    JR      C, @FORCE_INTEGERS  ; Si 1023 < Y, hay Carry -> Fuera de rango (Y > 1023)
+    JR      @USE_LUT            ; Si llegamos aquí, ambos están en rango seguro
+
+@Y_IS_NEGATIVE:
+    ; En este punto, HL = Y (negativo) y DE = 1023
+    ADD     HL, DE              ; HL = Y + 1023
+    BIT     7, H                ; Si el resultado sigue siendo negativo...
+    JR      NZ, @FORCE_INTEGERS ; ...significa que Y < -1023
+
+    ; -------------------------------------------------------------------------
+    ; DESPACHO Y RENDERIZADO
+    ; -------------------------------------------------------------------------
+@USE_LUT:
+    POP     DE                  ; Restauramos X original limpio en DE
+    POP     HL                  ; Restauramos Y original limpio en HL
+    CALL    lut_SCALE_GRAPHIC_POS   ; ◄--- LLAMADA A TU RUTINA LUT (Rango Seguro)
+    POP AF
+    RET                         ; Retorna al programa con HL y DE escalados por LUT
+
+@FORCE_INTEGERS:
+    POP     DE                  ; Restauramos X original limpio en DE
+    POP     HL                  ; Restauramos Y original limpio en HL
+    CALL    calc_SCALE_GRAPHIC_POS ; ◄--- LLAMADA A TU RUTINA DE ENTEROS (Fallback)
+    POP AF
+    RET                         ; Retorna al programa con HL y DE escalados por Math
+
+
+lut_SCALE_GRAPHIC_POS:
     PUSH BC                         ;STACK AF,BC
     PUSH HL                         ;STACK AF,BC,HL
 
@@ -1022,17 +1101,17 @@ SCALE_GRAPHIC_POS:
 
     LD      BC, (VDU_GVXW); Carga el ancho del viewport en BC
 	BIT 	7,D
-	JR      NZ,DE_IS_NEGATIVE
+	JR      NZ,lut_DE_IS_NEGATIVE
     RES     1,C
 	;tenemos que obtener el valor escalado de la tabla LUT
-SCALE_DE:
+lut_SCALE_DE:
     LD      HL ,lut_scale_256
     ADD     HL ,DE
     LD      E,(HL)
     BIT     1,B ;resolucion 512?
     LD      D,0
-    JR      Z, WIDTH256
-WIDTH512:
+    JR      Z, lut_WIDTH256
+lut_WIDTH512:
     INC     HL
     INC     HL
     LD      A,(HL) 
@@ -1040,9 +1119,9 @@ WIDTH512:
     LD      E,A
     LD      D,0 
     RL      D
-WIDTH256:  
+lut_WIDTH256:  
     BIT 1,C
-    JR Z,SCALE_1024_TO_VIEPORT_HEIGHT
+    JR Z,lut_SCALE_1024_TO_VIEPORT_HEIGHT
     ld a, d         ; Cargar parte alta en A
     cpl             ; Invertir todos los bits de A (Complemento a 1)
     ld d, a         ; Guardar de vuelta en D
@@ -1050,8 +1129,8 @@ WIDTH256:
     cpl             ; Invertir todos los bits de A
     ld e, a         ; Guardar de vuelta en E
     inc de          ; Sumar 1 al registro de 16 bits (Complemento a 2)
-    JR SCALE_1024_TO_VIEPORT_HEIGHT
-DE_IS_NEGATIVE:
+    JR lut_SCALE_1024_TO_VIEPORT_HEIGHT
+lut_DE_IS_NEGATIVE:
    ; --- COMPLEMENTO A DOS DE DE ---
     ld a, d         ; Cargar parte alta en A
     cpl             ; Invertir todos los bits de A (Complemento a 1)
@@ -1061,33 +1140,33 @@ DE_IS_NEGATIVE:
     ld e, a         ; Guardar de vuelta en E
     inc de          ; Sumar 1 al registro de 16 bits (Complemento a 2)
     SET  1,C
-    JR  SCALE_DE
+    JR  lut_SCALE_DE
     
 
-SCALE_1024_TO_VIEPORT_HEIGHT:
+lut_SCALE_1024_TO_VIEPORT_HEIGHT:
     POP     HL            ; HL es la coordenada y de nuevo
     PUSH    DE                  
     LD      BC, (VDU_GVXH); Carga el alto del view port
 	BIT 	7,H
-	JR      NZ,HL_IS_NEGATIVE
+	JR      NZ,lut_HL_IS_NEGATIVE
     RES     1,C
 
-SCALE_HL:
+lut_SCALE_HL:
 	;tenemos que obtener el valor escalado de la tabla LUT
     ;212 es 11010100 y 192 11000000
     BIT     2,C ;resolucion 212?
-    JR      Z, HEIGTH_192
+    JR      Z, lut_HEIGTH_192
     LD      DE ,lut_scale_212
-    JR      SCALE_HEIGHT
-HEIGTH_192:
+    JR      lut_SCALE_HEIGHT
+lut_HEIGTH_192:
     LD      DE,lut_scale_192
-SCALE_HEIGHT:
+lut_SCALE_HEIGHT:
     ADD     HL ,DE
     LD      A,(HL)
     LD      L,A
     LD      H,0
     BIT 1,C
-    JR Z,END_SCALE
+    JR Z,lut_END_SCALE
     ld a, h         ; Cargar parte alta en A
     cpl             ; Invertir todos los bits de A (Complemento a 1)
     ld h, a         ; Guardar de vuelta en D
@@ -1095,8 +1174,8 @@ SCALE_HEIGHT:
     cpl             ; Invertir todos los bits de A
     ld l, a         ; Guardar de vuelta en E
     inc hl          ; Sumar 1 al registro de 16 bits (Complemento a 2)
-    JR END_SCALE
-HL_IS_NEGATIVE:
+    JR lut_END_SCALE
+lut_HL_IS_NEGATIVE:
     ; --- COMPLEMENTO A DOS DE DE ---
     ld a, h         ; Cargar parte alta en A
     cpl             ; Invertir todos los bits de A (Complemento a 1)
@@ -1106,12 +1185,95 @@ HL_IS_NEGATIVE:
     ld l, a         ; Guardar de vuelta en E
     inc hl          ; Sumar 1 al registro de 16 bits (Complemento a 2)
     SET  1,C
-    JR  SCALE_HL
-END_SCALE:
+    JR  lut_SCALE_HL
+lut_END_SCALE:
     POP     DE            ; carga X escalado 
     POP     BC
-    POP     AF
     RET
+
+
+; CALC_SCALE_GRAPHIC_POS:cALCULATES PIXEL COORDS
+;   	  Inputs: DE = horizontal position (LEFT=0..1279)
+;                 HL = vertical position (bottom=0..1023)
+; 	  Destroys: AF D,E,H,L
+;
+calc_SCALE_GRAPHIC_POS:
+    PUSH BC                         ;STACK AF,BC
+    PUSH HL                         ;STACK AF,BC,HL
+
+    ;ARITHMETIC & LOGICAL OPERATORS:
+    ;All take two arguments, in HLH"L'C & DED'E"B.
+    ; Output in HLH'L'C
+    ; Subrutina para escalar un valor rango 1280 al ancho del viewport.
+    ;
+
+    LD      HL, (VDU_GVXW); Carga el primer entero en el registro HL (graphic viewport X width)
+
+	BIT 	7,D
+	JR      NZ,calc_DE_IS_NEGATIVE
+	EXX
+	LD      DE, 0000H  
+	JR 		calc_DE_IS_POSITIVE ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
+                 ; Cambia a los registros alternos HL' tiene el ancho del viewport     
+                          ; DE' contiene la porsicion x
+calc_DE_IS_NEGATIVE:
+    EXX  
+	LD 		DE, 0FFFFH
+calc_DE_IS_POSITIVE:	
+	;si es negativo debería poner a  ffff los bytes altos!
+	;LD 		DE,FFFFh
+
+	LD      HL, 0000H         ; Pone a cero HL (bits 31 al 16 del nº entero de 32 bits)
+    LD      BC,0          ; exponente tiene que ser 0 en ambos numeros	
+    LD	    A,10
+    CALL    FPP		  ;MULTIPLY          ; HLH'L' contiene la multiplicacion
+
+calc_DIVIDE_BY_1280:
+    EXX     
+    LD      DE, 1280
+    EXX
+    LD      DE, 0         ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
+                          ; Divisor está en DED'É'
+    LD      BC,0          ; exponente tiene que ser 0 en ambos numeros
+    LD	    A,1
+    CALL    FPP		  ;IBDIV         ; after the mul and div the number is 16 bits
+    EXX
+    LD      DE,HL         ; carga H'L' en DE temporalmente
+   
+
+calc_SCALE_1024_TO_VIEPORT_HEIGHT:
+    POP     HL            ; HL es la coordenada y de nuevo
+    PUSH    DE                  
+    LD      DE, (VDU_GVXH); Carga el alto del view port
+	BIT 	7,H
+	JR      NZ,calc_HL_IS_NEGATIVE
+	EXX
+	LD      HL, 0000H  
+	JR 		calc_HL_IS_POSITIVE ; Pone a cero DE (bits 31 al 16 del nº entero de 32 bits)
+calc_HL_IS_NEGATIVE:
+    EXX
+	LD 		HL, 0FFFFH
+calc_HL_IS_POSITIVE:	
+    LD      DE,0
+    LD	    A,10
+    CALL    FPP		      ;MULTIPLY
+
+calc_DIVIDE_BY_1024:
+    EXX
+    LD      DE, 1024
+    EXX
+    LD      DE, 0         ; Divisor está en DED'É'
+    LD      BC,0          ;exponente tiene que ser 0 en ambos numeros
+    LD      A,1
+    CALL    FPP		      ;IBDIV  after the mul and div the number is 16 bits
+    EXX
+    POP     DE            ; carga X escalado 
+    POP     BC
+    RET
+
+
+
+
 
 ;****************************SCROLL VIEWPOERT***********************
 WRITE_VDP:
