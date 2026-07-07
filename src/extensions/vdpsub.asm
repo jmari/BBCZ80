@@ -54,6 +54,7 @@
 ; --- Definiciones de Puertos y Registros VDP ---
 	VDP_DATA_PORT   EQU 98h
 	VDP_CTRL_PORT   EQU 99h
+	VDP_PALETTE_PORT   EQU 9Ah
 	VDP_INDR_PORT   EQU 9Bh
 
 	R36 EQU 36
@@ -276,23 +277,22 @@ _isearch:
 	;E is the physical color
 	;and the index in the palette table
 ipalette:    
-	;call	wait_vdp_ready i think we dont need that
-	ld	a,E
+	;call	wait_vdp_ready ;i think we dont need that
+	
     di
 	out	(VDP_CTRL_PORT),a
-	ld	a,128+16
-    ei
-	out	(VDP_CTRL_PORT),a	   ;R#16 := pysical 
-	ld	c,VDP_INDR_PORT
-	xor a
-	ld ix,PALETTE
-	rl e
+	ld	a,128+16 
+	out	(VDP_CTRL_PORT),a	   ;R#16 := palete register number (physical color)
+	ld	c,VDP_PALETTE_PORT
+	sla e
 	ld d,0
+    ld ix, PALETTE
 	add ix,de
 	ld a,(ix+1)
-	out	(c),a
-	ld a,(ix)      ;red and blue colors
-	and 00001111b  ;cmd line
+	out	(c),a      ;red and blue colors
+	ld a,(ix)      
+	and 00001111b
+    ei
 	out	(c),a      ;green color
 	ret
 
@@ -420,9 +420,10 @@ read_vdp_status_register:
 
 
 ;-----------Palete copy in ram-----------------
-;  A : logical color 
-;  returns A: physical color
-findPhysicalColor:
+;  A: physical color
+;  returns A : logical color 
+
+findLogicalColor:
 	LD B,15
 	RLA
 	RLA
@@ -444,10 +445,10 @@ findPhysicalColor:
 	SUB B
 	RET
 ;-----------Palete copy in ram-----------------
-;  A: physical color
-;  returns A : logical color 
+;  A : logical color 
+;  returns A: physical color
 
-findLogicalColor:
+findPhysicalColor:
     LD  HL, PALETTE
     ADD HL,A
     ADD HL,A ;x 2 IS A WORD
@@ -1004,11 +1005,6 @@ IS_TXT_MODE:
     POP DE
     RET
 
-; SCALE_GRAPHIC_POS:cALCULATES PIXEL COORDS
-;   	  Inputs: DE = horizontal position (LEFT=0..1279)
-;                 HL = vertical position (bottom=0..1023)
-; 	  Destroys: D,E,H,L
-;
 
 
 ; =============================================================================
@@ -1026,9 +1022,9 @@ SCALE_GRAPHIC_POS:
     PUSH    DE                  ; 2. Guardamos X original en la pila
                                 ; Estructura Stack: [Top = X_orig, Next = Y_orig]
     ; -------------------------------------------------------------------------
-    ; COMPROBACIÓN DEL EJE X (DE) -> Límites: -1179 a 1179
+    ; COMPROBACIÓN DEL EJE X (DE) -> Límites: -1279 a 1279
     ; -------------------------------------------------------------------------
-    LD      HL, 1179            ; Cargamos el límite en HL para operar
+    LD      HL, 1279            ; Cargamos el límite en HL para operar
     BIT     7, D                ; ¿Es X (DE) un número negativo?
     JR      NZ, @X_IS_NEGATIVE
 
@@ -1054,7 +1050,7 @@ SCALE_GRAPHIC_POS:
     PUSH    HL                  ; Los volvemos a dejar en la pila exactamente igual
     PUSH    DE                  ; para los CALLs finales.
 
-    LD      DE, 1023            ; Cargamos el límite de Y en DE
+    LD      DE, 1059            ; Cargamos el límite de Y en DE
     BIT     7, H                ; ¿Es Y (HL) negativo?
     JR      NZ, @Y_IS_NEGATIVE
 
@@ -1260,7 +1256,7 @@ calc_HL_IS_POSITIVE:
 
 calc_DIVIDE_BY_1024:
     EXX
-    LD      DE, 1024
+    LD      DE, 1060    ;usamos 1060 en lugar de 1024 para que sea multiplo de 5
     EXX
     LD      DE, 0         ; Divisor está en DED'É'
     LD      BC,0          ;exponente tiene que ser 0 en ambos numeros

@@ -3,6 +3,7 @@ PUBLIC lut_scale_256
 PUBLIC lut_scale_192
 PUBLIC lut_scale_212
 lut_scale_256:
+lut_scale_212:
     defb 0, 0, 0, 0, 0
     defb 1, 1, 1, 1, 1
     defb 2, 2, 2, 2, 2
@@ -259,6 +260,7 @@ lut_scale_256:
     defb 253, 253, 253, 253, 253
     defb 254, 254, 254, 254, 254
     defb 255, 255, 255, 255, 255
+    defb 255, 255, 255, 255, 255
 
 ; --- Tabla de escalado 1024 -> 192 ---
 
@@ -330,7 +332,7 @@ lut_scale_192:
 
 ; --- Tabla de escalado 1024 -> 212 ---
 
-lut_scale_212:
+lut_scale_212_old:
     defb 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3
     defb 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6
     defb 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 10

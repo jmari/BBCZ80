@@ -828,18 +828,19 @@ VDU19:
 	LD E,A
 	LD D,0h
 	LD A,(VDU_ARGV+4) 		;logical color
-	RLA
-	RLA
-	RLA
-	RLA
+	CALL findPhysicalColor
+	;RLA
+	;RLA
+	;RLA
+	;RLA
 	LD IX,PALETTE
-	RL E   ;X BYTES
+	sla e   ;X 2 BYTES
 	ADD IX,DE
 	RR E
-	OR L	
-	LD (IX),A			    ;loads logical color in the palete and G tree bits
-	LD (IX+1),H				;loads the RB byte
-	CALL ipalette			;sets the RGB palete register R#E
+	;OR L	
+	;LD (IX),A			    ;loads logical color in the palete and three bits of G
+	;LD (IX+1),H				;loads the RB byte
+	CALL ipalette			;sets the RGB palete register R#E physical, A logical
 	RET
 VDU20:RET
 VDU21:RET
@@ -998,7 +999,7 @@ GET_POINT:
 		CP	8
 		JR	Z, @COLOR_256 
 		EX  AF,AF'
-		call findLogicalColor
+		;point ya devuelve el color logico (el real) || call findLogicalColor
 	@COLOR_256:
 	RET
 
