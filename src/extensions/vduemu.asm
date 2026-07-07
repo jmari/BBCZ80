@@ -829,17 +829,19 @@ VDU19:
 	LD D,0h
 	LD A,(VDU_ARGV+4) 		;logical color
 	CALL findPhysicalColor
-	;RLA
-	;RLA
-	;RLA
-	;RLA
+	EX AF,AF'
+	LD A,E
+	CP 0FFh
+	JR NZ,DONOT_CHANGE_PALETTE
+	ex AF,AF'
+	LD E,A
 	LD IX,PALETTE
-	sla e   ;X 2 BYTES
 	ADD IX,DE
-	RR E
-	;OR L	
-	;LD (IX),A			    ;loads logical color in the palete and three bits of G
-	;LD (IX+1),H				;loads the RB byte
+	OR L	
+	LD (IX),A			    ;loads logical color in the palete and three bits of G
+	LD (IX+1),H				;loads the RB byte
+DONOT_CHANGE_PALETTE:
+	EX AF,AF'
 	CALL ipalette			;sets the RGB palete register R#E physical, A logical
 	RET
 VDU20:RET
