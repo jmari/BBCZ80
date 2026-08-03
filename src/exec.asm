@@ -93,7 +93,6 @@
 	EXTERN	GETDEF
 	EXTERN	LOCATE
 	EXTERN	CREATE
-	EXTERN  CREATE_PROC
 	EXTERN	OUTCHR
 	EXTERN	EXTERR
 	EXTERN	BYE
@@ -1322,8 +1321,19 @@ PROC4_2:
 
         ; --- GESTIÓN DE PARÁMETROS (ARGUMENTOS) ---
         CP      '('         ; ¿Tiene parámetros la llamada?
-        JP      NZ,PROC5    ; Si no, salta directo a ejecutar (PROC5)
+        JP      Z,PROC4_3    ; Si no, salta directo a ejecutar (PROC5)
         
+		PUSH    HL          ; Salva el puntero de retorno
+		;comprobamos que la linea de ejecucion entá en el buffer
+		LD      HL,CONTEXT_COPY
+		LD      BC,IY
+		SBC     HL,BC
+		LD      A,H
+		OR      A
+		JP      Z,EXEC_REMOTE
+		POP HL
+		JR     PROC5
+PROC4_3:
         ; Hay parámetros: toca salvar variables locales y evaluar expresiones
         CALL    NXT         ; Salta el '('
         CP      '('         ; ¿Doble paréntesis? (Error sintaxis)
