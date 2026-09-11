@@ -66,6 +66,7 @@
 
     ;-----DATA MODULE
     EXTERN  ACCS
+    EXTERN  CURRENT_SEG
     EXTERN  USER
 
 
@@ -324,7 +325,7 @@ BACK_FROM_ENDPRO:
     CALL COPY_ACTIVE_CONTEXT_TO_P2   ;EN BUFFER ESTA EL CONTEXTO ACTIVO
     CALL COPY_BUFFER_TO_ACTIVE_CONTEXT       ;EN P2 ESTABA EL CONTEXTO ANTERIOR, LO CARGAMOS DE NUEVO
                ; Por algún motivo la pila tiene un word de más
-    POP AF                   ;recupera el segmento activo
+    LD A,(CURRENT_SEG)                 ;recupera el segmento activo
     CALL SELECT_SEGMENT_P2
     POP IY
     INC IY
@@ -340,7 +341,7 @@ EXEC_REMOTE:
     CALL GET_CURRENT_SEGMENT_P2
     
     LD  C,A       ;Guarda el segmento activo en C
-    EXX ;conserbar C
+    EXX ;conservar C
 ;SWAP_SEGMENT:
 	LD  A,(DEFPROC_SEG) ; segmento DE LA LIBRERIA
     CALL SELECT_SEGMENT_P2  

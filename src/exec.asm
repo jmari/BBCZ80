@@ -52,7 +52,8 @@
 	PUBLIC  TOTHERWISE
 	PUBLIC	LET0
 	PUBLIC  ARGUE
-	PUBLIC  DEFPROC_SEG
+	EXTERN  DEFPROC_SEG
+	EXTERN  CURRENT_SEG
 ;----------------------------------------------------
 	EXTERN  RESERVED_SEGMENTS  		 ;EXEC_LOOP.ASM
     EXTERN  TOTAL_SEGMENTS         	 	 ;EXEC_LOOP.ASM      
@@ -1077,8 +1078,6 @@ FNCHK	EQU	$
 ; Se entra aquí cuando el intérprete detecta el token de PROC.
 ; AF viene con el flag de si es un "ON PROC" (para saltos múltiples).
 
-CURRENT_SEG:        DEFB 0
-DEFPROC_SEG:        DEFB 0
 RESTORE_CURRENT_CONTEXT:
 		;RECUPERAMOS EL SEGMENTO ORIGINAL (DONDE ESTAN LAS VARIABLES)
 		; SOLO si son diferentes
@@ -1182,7 +1181,7 @@ PROC1_LOOP:
 		;---
 		INC    	(IX-1)    ;one loop more, one for each segment and one for current context
 		                 ;IMPORTANT! el contexto actual si esta en una LIB lo checkeamos 2 veces!
-						 ;una libreria solo debería poder usar las librrias instaladas por ella misma
+						 ;una libreria solo debería poder usar las librerias instaladas por ella misma
 						 ;o sea segmentos posteriores
 		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
         POP     BC      ; Recupera el puntero de texto original
@@ -1230,14 +1229,13 @@ PROC3:  POP     IY          ;
         CALL    GETDEF																			   ;|
         LD      A,29
         JR      Z,GOTO_PROC4   ;ENCONTRADO!!!
-		;--------------------AQUI DEBERÍAMOS HACER EL BUCLE SI NO HAY LIBRERÍAS.____________________|
+		;--------------------AQUI HACEMOS EL BUCLE SI NO HAY LIBRERÍAS.____________________|
 CHECK_NEXT_LIB:
 		DEC      (IX-1)
 		JR      NZ,LOAD_NEXT_LIB
 		JP		ERROR3   ; "No such FN/PROC"
 LOAD_NEXT_LIB:
 		;cargamos el siguiente....
-		;POP     IY
 		
 		LD      HL,IX
 		LD      A,(IX-1)
@@ -1327,6 +1325,7 @@ PROC4_2:
 		;comprobamos que la linea de ejecucion entá en el buffer
 		LD      HL,CONTEXT_COPY
 		LD      BC,IY
+		OR      A
 		SBC     HL,BC
 		LD      A,H
 		OR      A
@@ -1360,6 +1359,7 @@ RETCHK: EX      AF,AF'      ; Verifica el cierre de paréntesis
         PUSH    HL          ; Salva el puntero de retorno
 		;comprobamos que la linea de ejecucion entá en el buffer
 		LD      HL,CONTEXT_COPY
+		OR      A
 		LD      BC,IY
 		SBC     HL,BC
 		LD      A,H
