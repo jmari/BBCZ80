@@ -53,6 +53,7 @@
 	PUBLIC	LET0
 	PUBLIC  ARGUE
 	PUBLIC  DEFPROC_SEG
+	PUBLIC  CURRENT_SEG
 ;----------------------------------------------------
 	EXTERN  RESERVED_SEGMENTS  		 ;EXEC_LOOP.ASM
     EXTERN  TOTAL_SEGMENTS         	 	 ;EXEC_LOOP.ASM      
@@ -1117,17 +1118,23 @@ CREATE_MARK:
 		PUSH    IX  ; contiene el puntero a la lista de segmentos
 		CALL 	RESTORE_CURRENT_CONTEXT
 		POP     IX  ;IX was DIRTY BECAUSE OF SELECT_SEGMENT_P2 SO WE HAVE TO RESTORE
+		POP     AF
+		POP     IY
+		PUSH    IY
+		PUSH    AF
 		CALL    CREATE
         POP     AF
 		LD      (HL),A      ; Guarda el segmento en (LSB) de la tabla Heap 
 		INC      HL
 		LD      (HL),0      ; Guarda el segmento en (HSB) a 0 
-		POP     HL			; EN REALIDAD EN HL tiene IY, pos despues de PROCname
-		LD     DE, CONTEXT_COPY   ;copy of input Buffer
-		SBC    HL,DE
-		PUSH   HL
-		POP    DE
+		;POP     HL			; EN REALIDAD EN HL tiene IY, pos despues de PROCname
+		;LD     DE, CONTEXT_COPY   ;copy of input Buffer
+		;SBC    HL,DE        ;distancia hasta el final de  PROCname
+		;PUSH   HL
+		;POP    DE
 		;POP    HL          ;hl contiene la posicion despues de DEF PROCname (nnn)CResta la hemos guardado en el heap del segmento donde se encuentra el codigo
+		INC    SP			;SACAMOS IY Y HL DE LA PILA
+		INC    SP
 		INC    SP
 		INC    SP
 		LD     L,A
@@ -1149,7 +1156,7 @@ COPY_DEFPROC_TO_BUFFER:
 		PUSH   HL  ;NECESITAMOS HL
 		EXX
 		;TRABAJAMOS CON LOS  REGISTROS '
-		POP    IX ; HL TENIA la direccion del heap
+		POP    IX ; HL TENIA la direccion del heap donde empiezan los parámetros o sea el "("
 		LD     HL,(IX)
 		LD     (CONTEXT_COPY+CURLIN-ACCS),HL        ;save next exec line un CURLIN pointer
 		LD     DE, CONTEXT_COPY   ;copy of input Buffer
@@ -1175,6 +1182,7 @@ PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack O
 		LD      (IX-1),A  ;IX-1 is a helper var for looping through all segments
 		OR 		A
 		JR 		Z,PROC1_LOOP
+
 		CALL   	COPY_ACTIVE_CONTEXT_TO_BUFFER   ;HAY LIBRERIAS ASI QUE GUARDAMOS EL CONTEXTO
 		CALL    COPY_PROC_TO_BUFFER
 
@@ -1194,7 +1202,7 @@ LOOKUP_PROC:
         ; --- BÚSQUEDA DEL DEF PROC EN EL PROGRAMA ---
         ; Si no está en el cache, hay que buscar "DEF PROCnombre" desde el principio
         LD      A,30
-        JP      C,ERROR3    ; Si GETDEF dio error, "Bad call"
+        JP      C,ERROR3    ; Si GETDEF dijo que no hay DEF X, "Bad call"
         PUSH    BC          ; Guarda otra vez el puntero de texto
         LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
 
@@ -1226,10 +1234,10 @@ PROC6:
         CPIR                ; Busca el final de línea (CR)
         JR      PROC2       ; Bucle de búsqueda
 
-PROC3:  POP     IY          ; 
+PROC3:  POP     IY          ; sacamos IY
         CALL    GETDEF																			   ;|
         LD      A,29
-        JR      Z,GOTO_PROC4   ;ENCONTRADO!!!
+        JR      Z,GOTO_PROC4   ;ENCONTRADO!!!no lo va a encontrar xq venimos de "C"
 		;--------------------AQUI DEBERÍAMOS HACER EL BUCLE SI NO HAY LIBRERÍAS.____________________|
 CHECK_NEXT_LIB:
 		DEC      (IX-1)
@@ -1253,17 +1261,19 @@ LOAD_NEXT_LIB:
 		LD      IY,CONTEXT_COPY  ;PROC_name LO tenemos guardado EN EL BUFFER movemos el puntero de linea ahi
 		PUSH    IY
 		AND     A    ;RESETS CARRY
-		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
+		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache) en el nuevo segmento
         POP     BC      ; Recupera el puntero de texto original
+        JP      C,ERROR3    ; Si GETDEF dijo que no hay DEF X, "Bad call"
 		JP      NZ,LOOKUP_PROC
+		
        
 
 GOTO_PROC4:
 		;no DEC(IX-1) do IX should be one more than allocated segments
-		LD      IX, SEGMENT_COUNTER ;(contiene el segmento)
+		LD      IX, SEGMENT_COUNTER ;(contiene el contador de segmentos)
 		LD      E,(IX)
-		LD 		A,(TOTAL_SEGMENTS)
-		CP		E
+		LD 		A,(TOTAL_SEGMENTS)  ;si valen igual es que no hemos cambiao de segmento
+		CP		E                           
 		JR      NC,NOT_IN_THE_SAME_SEGMENT   ;no hemos entrado en el bucle
 		INC     SP   ;DESCARTAMOS EL IY DEL LOOP
 		INC     SP
@@ -1272,17 +1282,15 @@ GOTO_PROC4:
 		; HAY QUE COPIAR LA CABECERA DE DEF PROC_name(....)
 		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
 NOT_IN_THE_SAME_SEGMENT:
+		POP IY  ;IY de la llamada ORIGINAL NECESARIO PARA HACER EL GETDEF->CREATE
 		CALL    COPY_DEFPROC_TO_BUFFER
 		CALL    CREATE_PROC_MARK 
-		;IY de la llamada ORIGINAL NO LO QUEREMOS EN IY
-		POP     BC
-		JR      NC,PROC4
-		PUSH    BC
-		LD      IY, (CONTEXT_COPY+CURLIN-ACCS)
-		ADD     IY,DE  
-		LD      (CONTEXT_COPY+CURLIN-ACCS),IY
-		POP     IY      ;IY falso DEL BUFFER 
-		ADD     IY,DE   ;SALTA EL PROC_name (DE LO DEVUELVE  EN CREATE_PROC_MARK)
+		;guardamos el nº segmento del DEF PROC encontrado, en el contexto que llamó
+		;restauramos el regmento original (CURRENT_SEG)
+		JR      NC,PROC4  ;NC estamos en mismo segmento que llamó
+		;IY APUNTA AHORA AL PROCnnn DE LA LLAMADA 
+		;A PARTIR DEL ( YA QUE LLAMAMOS A GETDEF PARA OBTENER POS EN HEAP  
+		;HL tiene el segmento
 		
 		
 
@@ -1304,7 +1312,7 @@ PROC4:
 		JR      NZ,PROC4_1
 		LD 		A,L
 		LD      (DEFPROC_SEG),A   ;Guardamos el segmento donde esta el DEF PROCname
-		LD      DE, CONTEXT_COPY  ;DEFPROC IS IN input Buffer
+		LD      DE, CONTEXT_COPY  ;DEFPROC IS IN the copy of context at ACC Buffer 
 		JR      PROC4_2
 PROC4_1:
 		LD      E,(HL)      ; HL tenía la dirección en la tabla, O EL SEGMENTO ahora DE tiene
@@ -1358,7 +1366,7 @@ RETCHK: EX      AF,AF'      ; Verifica el cierre de paréntesis
         PUSH    BC
         POP     IY          ; Restaura IY al código del procedimiento....
         PUSH    HL          ; Salva el puntero de retorno
-		;comprobamos que la linea de ejecucion entá en el buffer
+		;comprobamos que la linea de ejecucion está en el buffer
 		LD      HL,CONTEXT_COPY
 		LD      BC,IY
 		SBC     HL,BC
@@ -1510,6 +1518,7 @@ SAME_SEG2:
 	POP DE
 	POP HL
 	POP	IY
+	;POP AF por que esto aki?
 XEQGO6:	JP	XEQ
 ;
 ;INPUT #channel,var,var...

@@ -49,6 +49,7 @@
     EXTERN  CMDTAB  ; EXEC.ASM
     EXTERN  ARGUE   ;EXEC.ASM
     EXTERN  DEFPROC_SEG;EXEC.ASM
+    EXTERN  CURRENT_SEG;EXEC.ASM
     ;---
     EXTERN	TELSE
 	EXTERN  MELSE	;ELSE
@@ -180,6 +181,9 @@ INSTALL:
     ;JP   C, ERROR      ; Si es menor que 2, es DOS 1
 
     CALL GET_CURRENT_SEGMENT_P2
+    ;--- NECESITAMOS EL SEGMENTO
+		
+	LD 		(CURRENT_SEG),A
     PUSH AF             ;Guarda el segmento activo en la pila
     XOR A               ;solicitamos RAM DE USUARIO
     CALL ALLOCATE_SEGMENT
