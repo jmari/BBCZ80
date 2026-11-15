@@ -59,6 +59,7 @@
     EXTERN  TOTAL_SEGMENTS         	 	 ;EXEC_LOOP.ASM      
     EXTERN  MAIN_SEGMENT  			 ;EXEC_LOOP.ASM
 	EXTERN  COPY_P2_TO_ACTIVE_CONTEXT
+	EXTERN  COPY_ACTIVE_CONTEXT_TO_P2
 	EXTERN  COPY_ACTIVE_CONTEXT_TO_BUFFER
 	EXTERN  COPY_BUFFER_TO_ACTIVE_CONTEXT
 	EXTERN  SELECT_SEGMENT_P2
@@ -67,7 +68,8 @@
 	EXTERN  CONTEXT_COPY
 	EXTERN SEGMENT_COUNTER
 	EXTERN BACK_FROM_ENDPRO
-	
+	EXTERN STAR_OF_P2
+	EXTERN PROCADDR
 	
 
 	EXTERN  NEWLIN
@@ -181,6 +183,7 @@
 	EXTERN	OC
 	;NEW CMD INSTALL
 	EXTERN	INSTALL
+	EXTERN START_OF_P2
 ;
 LF	EQU	0AH
 CR	EQU	0DH
@@ -1083,6 +1086,7 @@ DEFPROC_SEG:        DEFB 0
 RESTORE_CURRENT_CONTEXT:
 		;RECUPERAMOS EL SEGMENTO ORIGINAL (DONDE ESTAN LAS VARIABLES)
 		; SOLO si son diferentes
+		CALL    COPY_ACTIVE_CONTEXT_TO_P2
 		LD      A,(CURRENT_SEG)
 		CALL	SELECT_SEGMENT_P2
 		CALL    COPY_BUFFER_TO_ACTIVE_CONTEXT
@@ -1133,8 +1137,8 @@ CREATE_MARK:
 		;PUSH   HL
 		;POP    DE
 		;POP    HL          ;hl contiene la posicion despues de DEF PROCname (nnn)CResta la hemos guardado en el heap del segmento donde se encuentra el codigo
-		INC    SP			;SACAMOS IY Y HL DE LA PILA
-		INC    SP
+		POP    HL			;SACAMOS IY Y HL DE LA PILA
+		LD     (PROCADDR), HL
 		INC    SP
 		INC    SP
 		LD     L,A
@@ -1175,6 +1179,7 @@ PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack O
         DEC     IY      ; Retrocede el puntero de texto para leer el nombre del PROC
         PUSH    IY      ; Guarda dónde estaba el programa antes de la llamada
 		;--- NECESITAMOS EL SEGMENTO
+
 		CALL    GET_CURRENT_SEGMENT_P2
 		LD 		(CURRENT_SEG),A
 		LD      A, (TOTAL_SEGMENTS)
@@ -1182,7 +1187,6 @@ PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack O
 		LD      (IX-1),A  ;IX-1 is a helper var for looping through all segments
 		OR 		A
 		JR 		Z,PROC1_LOOP
-
 		CALL   	COPY_ACTIVE_CONTEXT_TO_BUFFER   ;HAY LIBRERIAS ASI QUE GUARDAMOS EL CONTEXTO
 		CALL    COPY_PROC_TO_BUFFER
 
@@ -1254,6 +1258,7 @@ LOAD_NEXT_LIB:
 		LD      A,(HL) ;a tiene el nº de segmento ahora
 		LD      (DEFPROC_SEG),A
 		CALL	SELECT_SEGMENT_P2
+		; en el buffer esta el contexto que llama
 		CALL 	COPY_P2_TO_ACTIVE_CONTEXT
 		CALL    INIT_CONTEXT_IN_A_SEGMENT
         LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
@@ -1291,7 +1296,6 @@ NOT_IN_THE_SAME_SEGMENT:
 		;IY APUNTA AHORA AL PROCnnn DE LA LLAMADA 
 		;A PARTIR DEL ( YA QUE LLAMAMOS A GETDEF PARA OBTENER POS EN HEAP  
 		;HL tiene el segmento
-		
 		
 
 		; --- AQUI EMPEZABA ANTES PROC4     ---
@@ -1495,30 +1499,30 @@ ENDPRO:	POP	BC
 ;
 ENDPR1:	
 
-	PUSH    HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
-	PUSH    DE
-	PUSH IX
-	LD      IX, SEGMENT_COUNTER ;(contiene el segmento)
-	LD      L,(IX)
-	LD 		A,(TOTAL_SEGMENTS)
-	CP		L
-	JR      C,SAME_SEG2
-	LD HL, (CONTEXT_COPY+PAGE-ACCS) ; RESTABLECEMOS PARA QUE HAGA EL CAMBIO DE CONTEXTO
-	LD (PAGE),HL
-	POP IX
-	POP DE
-	POP HL 
-	POP	IY
-	LD A,(CURRENT_SEG)
-	PUSH IY
-	PUSH AF
-	JP   BACK_FROM_ENDPRO
+	PUSH  HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
+	PUSH  DE
+	PUSH  IX
+	LD    IX, SEGMENT_COUNTER ;(contiene el segmento)
+	LD    L,(IX)
+	LD 	  A,(TOTAL_SEGMENTS)
+	CP    L
+	JR    C,SAME_SEG2
+	LD    HL, (CONTEXT_COPY+PAGE-ACCS) ; RESTABLECEMOS PARA QUE HAGA EL CAMBIO DE CONTEXTO
+	LD   (PAGE),HL
+	POP   IX
+	POP   DE
+	POP   HL 
+	POP	  IY
+	LD    A,(CURRENT_SEG)
+	PUSH  IY
+	PUSH  AF
+	JP    BACK_FROM_ENDPRO
 SAME_SEG2:
 	POP IX
 	POP DE
 	POP HL
 	POP	IY
-	;POP AF por que esto aki?
+	POP AF
 XEQGO6:	JP	XEQ
 ;
 ;INPUT #channel,var,var...

@@ -20,6 +20,7 @@
     PUBLIC  END
     PUBLIC  EXEC_REMOTE
     PUBLIC  BACK_FROM_ENDPRO
+    PUBLIC START_OF_P2 
 
 
     EXTERN ALLOCATE_SEGMENT         ;MAPPER.ASM
@@ -68,6 +69,9 @@
     ;-----DATA MODULE
     EXTERN  ACCS
     EXTERN  USER
+	EXTERN	GETDEF
+    EXTERN  PROCADDR
+
 
 
 
@@ -327,7 +331,7 @@ _ERROR:
 BACK_FROM_ENDPRO:
     CALL COPY_ACTIVE_CONTEXT_TO_P2   ;EN BUFFER ESTA EL CONTEXTO ACTIVO
     CALL COPY_BUFFER_TO_ACTIVE_CONTEXT       ;EN P2 ESTABA EL CONTEXTO ANTERIOR, LO CARGAMOS DE NUEVO
-               ; Por algún motivo la pila tiene un word de más
+               
     POP AF                   ;recupera el segmento activo
     CALL SELECT_SEGMENT_P2
     POP IY
@@ -336,36 +340,43 @@ BACK_FROM_ENDPRO:
 
 ; venimos de un PROC 
 EXEC_REMOTE:
-    ;RECUPERAMOS PUNTERO DE llamada a la funcion
-    PUSH HL
-    PUSH DE  ;guardamos para la ejecucion de argue
-    PUSH IX  ;  "
-    PUSH IY
-    CALL GET_CURRENT_SEGMENT_P2
+    ; --- PARTE 1: Carga en la pila ---  
+    ; ARGUE: DE addresses parameter list . Debe estar en el "(" de la llamada al PROCnnn(
+    ;  IY addresses dummy variable list  . Parece que tiene que estar en el "(" de DEF PROCnnn(
+    ;  IX addresses RETURNed parameter data block. parece una posición de retorno en la pila...
+   
     
+    CALL ARGUE
+    LD IY,(PROCADDR)
+;COPY_PROC_TO_BUFFER:
+    EXX
+    LD     HL,IY ;IY
+    LD     DE, ACCS  ;copy of string Buffer
+    LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...
+    LDIR
+    EXX
+    CALL    NXT         ; Lee lo que sigue (debería ser PROC)
+    CALL    GETDEF      ; Compara el nombre del DEF encontrado con el buscado
+    INC     HL
+	LD      A,(HL)  
+    LD      (DEFPROC_SEG),A
+    CALL GET_CURRENT_SEGMENT_P2
     LD  C,A       ;Guarda el segmento activo en C
-    EXX ;conserbar C
+    EXX           ;conservar C
 ;SWAP_SEGMENT:
 	LD  A,(DEFPROC_SEG) ; segmento DE LA LIBRERIA
     CALL SELECT_SEGMENT_P2  
-    LD  IX,(CURLIN); cargamos  la linea despues de DEF PROC en el segmento (esta en CURLIN) en IX
-    POP IY ;IX<-IY  
-    LD  (CURLIN),IY
     CALL COPY_ACTIVE_CONTEXT_TO_BUFFER 
     CALL COPY_P2_TO_ACTIVE_CONTEXT        ;copiamos el contexto al segmento destino
-    ; --- PARTE 2: Limpieza de Pila y Carga ---  
-    ;TENEMOS QUE HACER LO QUE EL PROC PARA LOCALIZAR EL PROC DE VERDAD
-    LD  (CURLIN),IX
     EXX
-    LD A,C
-    LD IY,IX
-    POP IX
-    POP DE
-    POP HL
-    CALL ARGUE
-    POP HL
-    ; --- PARTE 5: Preparación de punteros de datos y programa ---
-    LD      (HL),E      ; Guarda el "puntero de retorno" definitivo en la pila.
-    INC     HL
-    LD      (HL),D
+
+    LD IY,CONTEXT_COPY
+    CALL    NXT         ; Lee lo que sigue (debería ser PROC)
+    CALL    GETDEF      ; Compara el nombre del DEF encontrado con el buscado
+    LD      IY,(HL)       ; Guarda la dirección (LSB) en la tabla del segmento correspondiente
+BRAKET:	CALL	NXT
+	INC	IY
+	CP	')'
+	JR NZ,BRAKET
+  
     JP      XEQ    
