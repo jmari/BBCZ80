@@ -1178,35 +1178,14 @@ PROCHK  EQU $           ; Marcador de control (identifica una llamada PROC en la
 PROC1:  CALL    CHECK   ; Verifica si hay espacio suficiente en la pila (Stack Overflow check)
         DEC     IY      ; Retrocede el puntero de texto para leer el nombre del PROC
         PUSH    IY      ; Guarda dónde estaba el programa antes de la llamada
-		;--- NECESITAMOS EL SEGMENTO
-
-		CALL    GET_CURRENT_SEGMENT_P2
-		LD 		(CURRENT_SEG),A
-		LD      A, (TOTAL_SEGMENTS)
-		LD      IX, RESERVED_SEGMENTS
-		LD      (IX-1),A  ;IX-1 is a helper var for looping through all segments
-		OR 		A
-		JR 		Z,PROC1_LOOP
-		CALL   	COPY_ACTIVE_CONTEXT_TO_BUFFER   ;HAY LIBRERIAS ASI QUE GUARDAMOS EL CONTEXTO
-		CALL    COPY_PROC_TO_BUFFER
-
-PROC1_LOOP:
-		;---
-		INC    	(IX-1)    ;one loop more, one for each segment and one for current context
-		                 ;IMPORTANT! el contexto actual si esta en una LIB lo checkeamos 2 veces!
-						 ;una libreria solo debería poder usar las librrias instaladas por ella misma
-						 ;o sea segmentos posteriores
-		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
+        CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache)
         POP     BC      ; Recupera el puntero de texto original
-        JP      Z,PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
-		PUSH   	IY      ;guardamos otra vez IY para recuperarlo en caso de no encontrarlo en este contexto
-		
-;LA BUSQUEDA TENEMOS QUE HACERLA EN TODOS LOS SEGMENTOS....
-LOOKUP_PROC:
+        JR      Z,PROC4 ; ¡Suerte! Ya sabíamos dónde estaba el DEF PROC, saltamos a ejecutarlo.
+
         ; --- BÚSQUEDA DEL DEF PROC EN EL PROGRAMA ---
         ; Si no está en el cache, hay que buscar "DEF PROCnombre" desde el principio
         LD      A,30
-        JP      C,ERROR3    ; Si GETDEF dijo que no hay DEF X, "Bad call"
+        JR      C,ERROR3    ; Si GETDEF dio error, "Bad call"
         PUSH    BC          ; Guarda otra vez el puntero de texto
         LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
 
@@ -1223,106 +1202,29 @@ PROC2:  LD      A,TDEF      ; Token de "DEF"
         POP     DE
         JR      C,PROC6     ; No coincide, seguimos buscando
         
-        ; --- ENCONTRADO ---;
-		CALL 	NZ,CREATE   ; Si es nuevo, lo añade a la tabla de saltos para la próxima vez
+        ; --- ENCONTRADO ---
+        CALL    NZ,CREATE   ; Si es nuevo, lo añade a la tabla de saltos para la próxima vez
         PUSH    IY
         POP     DE
-        LD      (HL),E      ; Guarda la dirección (LSB) en la tabla del segmento correspondiente
+        LD      (HL),E      ; Guarda la dirección (LSB) en la tabla
         INC     HL
         LD      (HL),D      ; Guarda la dirección (MSB)
         
-PROC6:
-		EX      DE,HL       ; Salta el resto de la línea para seguir buscando en la siguiente
+PROC6:  EX      DE,HL       ; Salta el resto de la línea para seguir buscando en la siguiente
         LD      A,CR
         LD      B,A
         CPIR                ; Busca el final de línea (CR)
         JR      PROC2       ; Bucle de búsqueda
 
-PROC3:  POP     IY          ; sacamos IY
-        CALL    GETDEF																			   ;|
+PROC3:  POP     IY          ; Si llegamos aquí y no estaba -> Error
+        CALL    GETDEF
         LD      A,29
-        JR      Z,GOTO_PROC4   ;ENCONTRADO!!!no lo va a encontrar xq venimos de "C"
-		;--------------------AQUI DEBERÍAMOS HACER EL BUCLE SI NO HAY LIBRERÍAS.____________________|
-CHECK_NEXT_LIB:
-		DEC      (IX-1)
-		JR      NZ,LOAD_NEXT_LIB
-		JP		ERROR3   ; "No such FN/PROC"
-LOAD_NEXT_LIB:
-		;cargamos el siguiente....
-		;POP     IY
-		
-		LD      HL,IX
-		LD      A,(IX-1)
-		DEC     A   ;recuerda a tiene 1 de mas   
-		ADD     HL, A
-		LD      A,(HL) ;a tiene el nº de segmento ahora
-		LD      (DEFPROC_SEG),A
-		CALL	SELECT_SEGMENT_P2
-		; en el buffer esta el contexto que llama
-		CALL 	COPY_P2_TO_ACTIVE_CONTEXT
-		CALL    INIT_CONTEXT_IN_A_SEGMENT
-        LD      HL,(PAGE)   ; Empezamos a buscar desde el inicio del programa (PAGE)
-		LD      IX,RESERVED_SEGMENTS
-		LD      IY,CONTEXT_COPY  ;PROC_name LO tenemos guardado EN EL BUFFER movemos el puntero de linea ahi
-		PUSH    IY
-		AND     A    ;RESETS CARRY
-		CALL    GETDEF  ; Lee el nombre del PROC y busca si ya conocemos su dirección (Cache) en el nuevo segmento
-        POP     BC      ; Recupera el puntero de texto original
-        JP      C,ERROR3    ; Si GETDEF dijo que no hay DEF X, "Bad call"
-		JP      NZ,LOOKUP_PROC
-		
-       
+        JR      NZ,ERROR3   ; "No such FN/PROC"
 
-GOTO_PROC4:
-		;no DEC(IX-1) do IX should be one more than allocated segments
-		LD      IX, SEGMENT_COUNTER ;(contiene el contador de segmentos)
-		LD      E,(IX)
-		LD 		A,(TOTAL_SEGMENTS)  ;si valen igual es que no hemos cambiao de segmento
-		CP		E                           
-		JR      NC,NOT_IN_THE_SAME_SEGMENT   ;no hemos entrado en el bucle
-		INC     SP   ;DESCARTAMOS EL IY DEL LOOP
-		INC     SP
-		JR      PROC4
-		; ANTES DE RESTAURAR SEGMENTO 
-		; HAY QUE COPIAR LA CABECERA DE DEF PROC_name(....)
-		; EN EL BUFFER TEMPORAL DE COPIA DE CONTEXTO
-NOT_IN_THE_SAME_SEGMENT:
-		POP IY  ;IY de la llamada ORIGINAL NECESARIO PARA HACER EL GETDEF->CREATE
-		CALL    COPY_DEFPROC_TO_BUFFER
-		CALL    CREATE_PROC_MARK 
-		;guardamos el nº segmento del DEF PROC encontrado, en el contexto que llamó
-		;restauramos el regmento original (CURRENT_SEG)
-		JR      NC,PROC4  ;NC estamos en mismo segmento que llamó
-		;IY APUNTA AHORA AL PROCnnn DE LA LLAMADA 
-		;A PARTIR DEL ( YA QUE LLAMAMOS A GETDEF PARA OBTENER POS EN HEAP  
-		;HL tiene el segmento
-		
-
-		; --- AQUI EMPEZABA ANTES PROC4     ---
-		; --- PREPARACIÓN PARA LA EJECUCIÓN ---
-
-; SI DEF PROC ESTA EN OTRO SEGMENTO:
-; HL TIENE LA DIRECCION EN LA PILA DONDE GUARDA LA POSICION DEL '(' DEL DEF PROC
-; PERO SI ESTA EN OTRO SEGMENTO TENDRA EL Nº DE SEGMENTO <= FFH  Y 
-; HL' LA DIRECCION DEL CUERPO DEL PROG EN ESE SEGMENTO.
-; IY APUNTARÁ AL PROC EN NUESTRO SEGMENTO,
-; EN EL BUFFER DE LA COPIA DEL CONTEXTO TENEMOS LA COPIA DE LA CABECERA DEL DEFPROC A PARTIR DEL '(''
-; PARA EL OBJETIVO DE CARGAR LOS VALORES DE 
-; LOS PARAMETROS EN LA PILA. UNA VEZ COPIADOS A LA PILA DEBEREMOS CAMBIAR AL 
-; SEGMENTO DEL PROCEDIMIENTO Y EJECUTARLO 
-PROC4:	 
-		LD      A,H
-		OR		A
-		JR      NZ,PROC4_1
-		LD 		A,L
-		LD      (DEFPROC_SEG),A   ;Guardamos el segmento donde esta el DEF PROCname
-		LD      DE, CONTEXT_COPY  ;DEFPROC IS IN the copy of context at ACC Buffer 
-		JR      PROC4_2
-PROC4_1:
-		LD      E,(HL)      ; HL tenía la dirección en la tabla, O EL SEGMENTO ahora DE tiene
+; --- PREPARACIÓN PARA LA EJECUCIÓN ---
+PROC4:  LD      E,(HL)      ; HL tenía la dirección en la tabla, ahora DE tiene
         INC     HL          ; la dirección real del código del procedimiento.
-        LD      D,(HL)     
-PROC4_2: 
+        LD      D,(HL)      
         LD      HL,2
         ADD     HL,SP       ; Apunta HL a la dirección de retorno en la pila
         CALL    NXT         ; Mira si después del nombre hay un '('
@@ -1333,19 +1235,8 @@ PROC4_2:
 
         ; --- GESTIÓN DE PARÁMETROS (ARGUMENTOS) ---
         CP      '('         ; ¿Tiene parámetros la llamada?
-        JP      Z,PROC4_3    ; Si no, salta directo a ejecutar (PROC5)
+        JP      NZ,PROC5    ; Si no, salta directo a ejecutar (PROC5)
         
-		PUSH    HL          ; Salva el puntero de retorno
-		;comprobamos que la linea de ejecucion entá en el buffer
-		LD      HL,CONTEXT_COPY
-		LD      BC,IY
-		SBC     HL,BC
-		LD      A,H
-		OR      A
-		JP      Z,EXEC_REMOTE
-		POP HL
-		JR     PROC5
-PROC4_3:
         ; Hay parámetros: toca salvar variables locales y evaluar expresiones
         CALL    NXT         ; Salta el '('
         CP      '('         ; ¿Doble paréntesis? (Error sintaxis)
@@ -1357,7 +1248,7 @@ PROC4_3:
         EX      AF,AF'
         XOR     A           ; Contador de parámetros a 0
         EX      AF,AF'
-
+        
         CALL    SAVLOC      ; *** CRUCIAL ***: Guarda los valores actuales de las 
                             ; variables que se van a usar como locales para restaurarlas luego.
         
@@ -1368,20 +1259,10 @@ RETCHK: EX      AF,AF'      ; Verifica el cierre de paréntesis
         CALL    BRAKET      ; Busca el ')'
         EXX
         PUSH    BC
-        POP     IY          ; Restaura IY al código del procedimiento....
+        POP     IY          ; Restaura IY al código del procedimiento
         PUSH    HL          ; Salva el puntero de retorno
-		;comprobamos que la linea de ejecucion está en el buffer
-		LD      HL,CONTEXT_COPY
-		LD      BC,IY
-		SBC     HL,BC
-		LD      A,H
-		OR      A
-		JP      Z,EXEC_REMOTE
-		POP HL
-		PUSH HL
         CALL    ARGUE       ; *** ASIGNA *** los valores evaluados a las variables locales.
         POP     HL
-
 
 ; --- EL "FIX" DE SEGURIDAD (BIT 4) ---
 ; Russell aquí hace algo muy listo: si una variable se pasa por referencia (RETURN),
@@ -1406,9 +1287,7 @@ PROC5:  LD      (HL),E      ; Guarda el "puntero de retorno" definitivo en la pi
         DEC     HL
         LD      (HL),E
 
-XEQGO:  
-		JP      XEQ         ; ¡SALTAMOS AL INTERPRETE PARA EJECUTAR EL DEF PROC!
-
+XEQGO:  JP      XEQ         ; ¡SALTAMOS AL INTERPRETE PARA EJECUTAR EL DEF PROC!
 
 ;
 LOCERR:	INC	IY
