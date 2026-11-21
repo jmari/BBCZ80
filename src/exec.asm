@@ -52,8 +52,7 @@
 	PUBLIC  TOTHERWISE
 	PUBLIC	LET0
 	PUBLIC  ARGUE
-	PUBLIC  DEFPROC_SEG
-	PUBLIC  CURRENT_SEG
+	
 ;----------------------------------------------------
 	EXTERN  RESERVED_SEGMENTS  		 ;EXEC_LOOP.ASM
     EXTERN  TOTAL_SEGMENTS         	 	 ;EXEC_LOOP.ASM      
@@ -1081,95 +1080,6 @@ FNCHK	EQU	$
 ; Se entra aquí cuando el intérprete detecta el token de PROC.
 ; AF viene con el flag de si es un "ON PROC" (para saltos múltiples).
 
-CURRENT_SEG:        DEFB 0
-DEFPROC_SEG:        DEFB 0
-RESTORE_CURRENT_CONTEXT:
-		;RECUPERAMOS EL SEGMENTO ORIGINAL (DONDE ESTAN LAS VARIABLES)
-		; SOLO si son diferentes
-		CALL    COPY_ACTIVE_CONTEXT_TO_P2
-		LD      A,(CURRENT_SEG)
-		CALL	SELECT_SEGMENT_P2
-		CALL    COPY_BUFFER_TO_ACTIVE_CONTEXT
-		RET
-
-CREATE_PROC_MARK:
-	
-		PUSH    HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
-		PUSH    IY  ; contiene la posicion despues de PROCname
-		LD      L,(IX-1) ;antes de la lista de segmentos está el contador auxiliar
-		LD 		A,(TOTAL_SEGMENTS) 
-		CP		L
-		JR      C,SAME_SEG
-		LD      A,L
-		DEC     A   ; AND ONE LESS BECAUSE WE MAKE A LOOP MORE FOR THE MAIN SEGMENT THAT IS NOT RESERVED
-		JR      DIFF_SEG
-SAME_SEG:
-		XOR     A
-DIFF_SEG:
-		LD      HL, RESERVED_SEGMENTS
-		ADD     HL,A
-		LD      A,(HL)
-		PUSH    AF
-		LD      HL,CURRENT_SEG
-		CP      (HL)
-		JR      NZ,CREATE_MARK		
-        POP     AF ;RECUPERAMOS AF de la pila
-		POP     IY
-		POP     HL
-		OR      A ;RESET CARRY
-		RET
-CREATE_MARK:
-		PUSH    IX  ; contiene el puntero a la lista de segmentos
-		CALL 	RESTORE_CURRENT_CONTEXT
-		POP     IX  ;IX was DIRTY BECAUSE OF SELECT_SEGMENT_P2 SO WE HAVE TO RESTORE
-		POP     AF
-		POP     IY
-		PUSH    IY
-		PUSH    AF
-		CALL    CREATE
-        POP     AF
-		LD      (HL),A      ; Guarda el segmento en (LSB) de la tabla Heap 
-		INC      HL
-		LD      (HL),0      ; Guarda el segmento en (HSB) a 0 
-		;POP     HL			; EN REALIDAD EN HL tiene IY, pos despues de PROCname
-		;LD     DE, CONTEXT_COPY   ;copy of input Buffer
-		;SBC    HL,DE        ;distancia hasta el final de  PROCname
-		;PUSH   HL
-		;POP    DE
-		;POP    HL          ;hl contiene la posicion despues de DEF PROCname (nnn)CResta la hemos guardado en el heap del segmento donde se encuentra el codigo
-		POP    HL			;SACAMOS IY Y HL DE LA PILA
-		LD     (PROCADDR), HL
-		INC    SP
-		INC    SP
-		LD     L,A
-		LD     H,0
-		SCF
-		RET
-
-COPY_PROC_TO_BUFFER:
-		EXX
-		LD     HL,IY ;IY
-		LD     DE, CONTEXT_COPY  ;copy of input Buffer
-		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...
-		LDIR
-		EXX
-		RET
-
-COPY_DEFPROC_TO_BUFFER:
-		PUSH   IX
-		PUSH   HL  ;NECESITAMOS HL
-		EXX
-		;TRABAJAMOS CON LOS  REGISTROS '
-		POP    IX ; HL TENIA la direccion del heap donde empiezan los parámetros o sea el "("
-		LD     HL,(IX)
-		LD     (CONTEXT_COPY+CURLIN-ACCS),HL        ;save next exec line un CURLIN pointer
-		LD     DE, CONTEXT_COPY   ;copy of input Buffer
-		LD	   BC, 0FFH  ;solo vamos a aprovecharlo para el proc...da igual lo que tenga despues
-		LDIR
-		EXX
-		POP    IX ;HL,DE Y BC SIGUEN VALIENDO LO MISMO E IX TAMBIEN
-		RET
-
 PROC:   PUSH    AF      ; Reserva espacio en la pila para el flag de ON
         CALL    PROC1   ; Truco: llama a la siguiente línea para poner una dirección 
                         ; de retorno en la pila que servirá de marcador.
@@ -1376,32 +1286,7 @@ ENDPRO:	POP	BC
 	LD	A,13
 	JP	ERROR		;"No PROC"
 ;
-ENDPR1:	
-
-	PUSH  HL  ; contiene la posicion despues de DEF PROCname (nnn)CR
-	PUSH  DE
-	PUSH  IX
-	LD    IX, SEGMENT_COUNTER ;(contiene el segmento)
-	LD    L,(IX)
-	LD 	  A,(TOTAL_SEGMENTS)
-	CP    L
-	JR    C,SAME_SEG2
-	LD    HL, (CONTEXT_COPY+PAGE-ACCS) ; RESTABLECEMOS PARA QUE HAGA EL CAMBIO DE CONTEXTO
-	LD   (PAGE),HL
-	POP   IX
-	POP   DE
-	POP   HL 
-	POP	  IY
-	LD    A,(CURRENT_SEG)
-	PUSH  IY
-	PUSH  AF
-	JP    BACK_FROM_ENDPRO
-SAME_SEG2:
-	POP IX
-	POP DE
-	POP HL
-	POP	IY
-	POP AF
+ENDPR1:	POP	IY
 XEQGO6:	JP	XEQ
 ;
 ;INPUT #channel,var,var...

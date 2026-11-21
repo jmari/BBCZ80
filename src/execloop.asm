@@ -87,7 +87,8 @@ TOTAL_SEGMENTS:     DEFB 0                ; Cuántos segmentos he pedido
 SEGMENT_COUNTER:    DEFB 0                ; helper byte for loops
 RESERVED_SEGMENTS:  DEFS 249,0      ; Reserve ten segments, asumming 256 segments (max 4096 bytes in RAM)
                                     ; msxdos has almost 6 ram segments reserved and VDU ext has one
-
+CURRENT_SEG:        DEFB 0
+DEFPROC_SEG:        DEFB 0
 
 ; Register the segment as reserved by us
 ; inputs: A, segment number
