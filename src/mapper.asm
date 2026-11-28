@@ -1,11 +1,14 @@
     PUBLIC INIT_MAPPER_POINTERS
     PUBLIC ALLOCATE_SEGMENT
+    PUBLIC SELECT_SEGMENT_P1
+    PUBLIC GET_CURRENT_SEGMENT_P1
     PUBLIC SELECT_SEGMENT_P2
     PUBLIC GET_CURRENT_SEGMENT_P2
     
 
     ;TENEMOS QUE DEFINIR ESTAS DOS DW EN EL CLIENTE DE LA LIBRERIA
     EXTERN MAPPER_JUMP_TABLE
+    EXTERN P1_SEGMENT
     EXTERN MAIN_SEGMENT
 ;------------------------------------------------------------------------------------UTILITY
 ; --- DIRECCIONES MSX-DOS 2 MAPPER ---
@@ -14,7 +17,10 @@
 
 ; Offset de la función ALL_SEG en la tabla (normalmente es el primer salto)
 ALL_SEG_OFFSET    EQU 0 
+PUT_P1_OFFSET     EQU 1Eh      ; Put Physical (Pon segmento A en página de HL)
 PUT_P2_OFFSET     EQU 24h      ; Put Physical (Pon segmento A en página de HL)
+
+GET_P1_OFFSET     EQU 21h      ; Get Physical (Lee segmento de página de HL en A)
 GET_P2_OFFSET     EQU 27h      ; Get Physical (Lee segmento de página de HL en A)
 
 
@@ -37,37 +43,45 @@ CSRSW EQU 0FCA9h
 INIT_MAPPER_POINTERS:
     LD   A, 1
     LD   (CSRSW), A
-    ; 1. Comprobar si existe la Extended BIOS
-    LD   A, (MAIN_SEGMENT)
-    OR  A
-    RET NZ
-    LD   A, (HOKVLD)
-    BIT  0, A              ; El bit 0 debe ser 1
-    JR   Z, NO_MAPPER    ; Si es 0, no hay soporte
 
-    ; 2. Preparar llamada a EXTBIO
-    LD   D, MAPPER_DEV_ID  ; D = 4 (Dispositivo Mapper)
-    LD   E, MAPPER_FUNC_GET; E = 2 (Dame la dirección de la tabla)
-    
-    ; 3. Llamar
-    CALL EXTBIO            ; Devuelve HL = Dirección base de la tabla
-    
-    ; 4. Verificar resultado (HL no debería ser 0)
+    ; 1. Verificar si ya está inicializado mirando el puntero (no MAIN_SEGMENT)
+    LD   HL, (MAPPER_JUMP_TABLE)
+    LD   A, H
+    OR   L
+    RET  NZ                  ; Ya inicializado (OR L deja Carry = 0)
+
+    ; 2. Comprobar Extended BIOS
+    LD   A, (HOKVLD)
+    BIT  0, A
+    JR   Z, NO_MAPPER
+
+    ; 3. Llamar a EXTBIO con A = 0 obligatorio
+    XOR  A                   ; A = 0 requerido por la especificación MSX-DOS 2
+    LD   HL, 0000h
+    LD   D, MAPPER_DEV_ID    ; D = 4
+    LD   E, MAPPER_FUNC_GET  ; E = 2
+    CALL EXTBIO
+
+    ; 4. Validar respuesta (A = total segmentos != 0, HL = tabla != 0)
+    OR   A
+    JR   Z, NO_MAPPER
     LD   A, H
     OR   L
     JR   Z, NO_MAPPER
 
-    ; 5. Guardar el puntero para usarlo luego
+    ; 5. Guardar tabla y segmento inicial
     LD   (MAPPER_JUMP_TABLE), HL
-    CALL    GET_CURRENT_SEGMENT_P2
-    LD      (MAIN_SEGMENT),A
-    OR   A                 ; Clear Carry (Éxito)
+    CALL GET_CURRENT_SEGMENT_P2
+    LD   (MAIN_SEGMENT), A
+    OR   A                   ; Carry = 0
     RET
 
 NO_MAPPER:
-    XOR	A                  ; set a to 0 (No room error)
-    SCF                    ; Set Carry (Error)
+    XOR  A
+    SCF                      ; Carry = 1
     RET
+
+
 
 ; ---------------------------------------------------------
 ; RUTINA: ALLOCATE_SEGMENT
@@ -79,11 +93,9 @@ ALLOCATE_SEGMENT:
     LD   B, 0       ; B = 0 (En el Mapper Primario)
     ; 2. Preparar el salto
     LD   DE, ALL_SEG_OFFSET
-    
     ; 3. Llamada al Mapper (Integrada para evitar líos de pila)
     LD   HL, (MAPPER_JUMP_TABLE)  
     ADD  HL, DE                 ; HL = F24F + 0
-    
     ; 4. Ejecución
     ; Usamos JP (HL) para saltar a la tabla.
     ; La tabla salta a la rutina del DOS.
@@ -91,23 +103,50 @@ ALLOCATE_SEGMENT:
     JP   (HL)
 
 
-    
-; -----------------------------------------------------------------------------
-; RUTINA: SELECT_SEGMENT_P2
-; -----------------------------------------------------------------------------
-SELECT_SEGMENT_P2:
-    PUSH AF
-    LD   DE, PUT_P2_OFFSET
-    LD   IX, (MAPPER_JUMP_TABLE) 
-    ADD  IX, DE               ; IX ahora sí apunta a F24F + 18
-    POP  AF
-    JP   (IX)                 ; Salta al "JP xxxx" del sistema
 
-; -----------------------------------------------------------------------------
-; RUTINA: GET_CURRENT_SEGMENT_P2
-; -----------------------------------------------------------------------------
+; --- SELECTORES (preservan TODOS los registros, incluido AF, DE, HL, IX) ---
+
+SELECT_SEGMENT_P1:
+    PUSH HL
+    PUSH DE
+    PUSH AF
+    LD   HL, (MAPPER_JUMP_TABLE)
+    LD   DE, PUT_P1_OFFSET
+    ADD  HL, DE
+    POP  AF
+    POP  DE
+    EX   (SP), HL
+    RET
+
+SELECT_SEGMENT_P2:
+    PUSH HL
+    PUSH DE
+    PUSH AF
+    LD   HL, (MAPPER_JUMP_TABLE)
+    LD   DE, PUT_P2_OFFSET
+    ADD  HL, DE
+    POP  AF
+    POP  DE
+    EX   (SP), HL
+    RET
+
+; --- GETTERS (devuelven segmento en A, preservan BC, DE, HL, IX, IY) ---
+GET_CURRENT_SEGMENT_P1:
+    PUSH HL
+    PUSH DE
+    LD   HL, (MAPPER_JUMP_TABLE)
+    LD   DE, GET_P1_OFFSET
+    ADD  HL, DE
+    POP  DE
+    EX   (SP), HL
+    RET
+
 GET_CURRENT_SEGMENT_P2:
+    PUSH HL
+    PUSH DE
+    LD   HL, (MAPPER_JUMP_TABLE)
     LD   DE, GET_P2_OFFSET
-    LD   IX, (MAPPER_JUMP_TABLE) 
-    ADD  IX, DE               ; IX apunta a F24F + 21
-    JP   (IX)                 ; Salta al "JP xxxx" del sistema y retorna A
+    ADD  HL, DE
+    POP  DE
+    EX   (SP), HL
+    RET

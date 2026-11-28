@@ -1,14 +1,13 @@
 EXTERN  VDU_CMD_W
 KFUNC     EQU 0F87Fh   ;use key function working area on basic  to return the driver name
-ORG  8000h
-
+ORG  4000h
 
 START_OF_DEVICE_HANDLER:
     JR     EXEC_VDU_FUNCTION            ; +0
     ; Offsets de funciones (1 byte cada una)
-    DEVICE_ID:            DEFB 150       ; +2 
-    DEVICE_NAME:         DEFM "BBC VDU Emulator v0.10", 0 
-    DEVICE_VERSION:      DEFB 10        ;version 0.10 
+    DEVICE_ID:           DEFB 150       ; +2 
+    DEVICE_NAME:         DEFM "BBC VDU Driver", 0 ;SHOULD BE LESS THAN 16 BYTES
+    DEVICE_VERSION:      DEFB 01        ;version 0.10 
 EXEC_VDU_FUNCTION:
     PUSH AF
     LD   A, E               
@@ -42,8 +41,7 @@ FUNC_PRESENCE:
 FUNC_VDU_OUT:
     LD   E,L                              ; L is the char to output
     CALL VDU_CMD_W          
-    inc sp
-    inc sp
-    ;POP AF                 ; Restore AF from the very beginning
+    INC SP                                ;POP AF Restore AF from the very beginning
+    INC SP
     RET
 END_OF_DEVICE_HANDLER:
