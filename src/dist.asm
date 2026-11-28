@@ -119,14 +119,16 @@ PTIME:	PUSH	BC
 ;  Outputs: DEHL = time (centiseconds)
 ; Destroys: D,E,H,L,F
 ;
-JIFFY   EQU 0FC9EH   
-TICKS: 					;MSX specific function call
-    LD  A, (JIFFY+0)    ; Byte menos significativo (Byte 0)
-    LD  L, A
-	LD  A, (JIFFY+1)    ; Byte 1
-	LD  H, A
-	XOR  E
-	XOR  D
+JIFFY   EQU 0FC9Eh
+
+; Salida: DEHL = centisegundos aproximados (50 Hz: *2; 60 Hz: *5/3 aprox.)
+; Destruye: AF, BC, DE, HL
+TICKS:
+    LD   HL, (JIFFY)    ; HL = ticks de 16 bits (50 Hz -> *2 centisegundos)
+    ADD  HL, HL         ; HL * 2 (desplazamiento de 16 bits, carry pasa a la parte alta)
+    LD   DE, 0000h
+    RL   E              ; E = bit 16 del resultado de 32 bits
+    LD   D, 00h         ; D = 0 (parte alta limpia)
     RET
 
 ;
